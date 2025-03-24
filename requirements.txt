@@ -1,0 +1,7 @@
+streamlit
+requests
+python-docx
+pandas
+streamlit-quill
+google-auth-oauthlib
+google-api-python-client
