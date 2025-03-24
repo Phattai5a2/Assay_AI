@@ -329,7 +329,7 @@ else:
             upload_file_to_drive(service, exam_pdf_content, "de_thi.pdf", exams_folder_id)
             upload_file_to_drive(service, answer_content, "dap_an.docx", exams_folder_id)
             
-            st.session_state["num_questions"] = num_questions
+            #st.session_state["num_questions"] = num_questions
             st.success("Đề thi (PDF) và đáp án đã được lưu trên Google Drive.")
 
         tab1, tab2, tab3 = st.tabs(["Chấm bài đơn", "Chấm bài hàng loạt", "Xem báo cáo"])
