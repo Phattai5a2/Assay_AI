@@ -25,7 +25,7 @@ from google.auth.transport.requests import Request
 
 # Sử dụng OpenRouter API miễn phí
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
-
+# Lấy API key từ st.secrets
 try:
     API_KEY = st.secrets["openrouter"]["api_key"]
 except KeyError:
@@ -138,11 +138,16 @@ def upload_file_to_drive(service, file_content, file_name, folder_id):
     
     # Cập nhật quyền chia sẻ thành "Anyone with the link"
     file_id = file['id']
-    permission = {
-        'type': 'anyone',
-        'role': 'reader'
-    }
-    service.permissions().create(fileId=file_id, body=permission).execute()
+    try:
+        permission = {
+            'type': 'anyone',
+            'role': 'reader'
+        }
+        service.permissions().create(fileId=file_id, body=permission).execute()
+        print(f"Đã đặt quyền chia sẻ công khai cho file {file_name} (ID: {file_id})")
+    except Exception as e:
+        print(f"Lỗi khi đặt quyền chia sẻ cho file {file_name}: {str(e)}")
+        raise Exception(f"Không thể đặt quyền chia sẻ công khai cho file {file_name}: {str(e)}")
     
     return file_id
 
@@ -247,7 +252,7 @@ def grade_essay(student_text, answer_text, student_name=None, mssv=None):
     payload = {
         "model": "mistralai/mistral-small-3.1-24b-instruct:free",
         "messages": [{"role": "system", "content": "Bạn là một giáo viên chấm bài chuyên nghiệp."},
-                      {"role": "user", "content": prompt}],
+                     {"role": "user", "content": prompt}],
         "temperature": 0.7
     }
     
@@ -266,10 +271,15 @@ def grade_essay(student_text, answer_text, student_name=None, mssv=None):
                 save_to_csv(data, service, reports_folder_id)
             return grading_result
         else:
-            st.error(f"Lỗi API: {response.status_code} - {response.json()}")
+            # Ghi log chi tiết về lỗi
+            error_detail = response.json() if response.content else "No response content"
+            st.error(f"Lỗi API: {response.status_code} - {error_detail}")
+            print(f"Request headers: {headers}")
+            print(f"Request payload: {payload}")
             return None
     except requests.exceptions.RequestException as e:
         st.error(f"Lỗi kết nối mạng: {str(e)}")
+        print(f"Network error details: {str(e)}")
         return None
 
 # Hàm trích xuất điểm từ kết quả chấm
@@ -319,7 +329,6 @@ else:
         st.subheader("Tải đề thi và đáp án")
         uploaded_exam_pdf = st.file_uploader("Tải lên đề thi (PDF)", type=["pdf"], key="exam_pdf")
         uploaded_answer = st.file_uploader("Tải lên đáp án mẫu", type=["docx"], key="answer")
-        #num_questions = st.number_input("Số lượng câu hỏi trong đề thi (không bắt buộc):", min_value=1, max_value=100, value=1, step=1)
 
         if uploaded_exam_pdf and uploaded_answer:
             # Tải file lên Google Drive
@@ -329,7 +338,6 @@ else:
             upload_file_to_drive(service, exam_pdf_content, "de_thi.pdf", exams_folder_id)
             upload_file_to_drive(service, answer_content, "dap_an.docx", exams_folder_id)
             
-            #st.session_state["num_questions"] = num_questions
             st.success("Đề thi (PDF) và đáp án đã được lưu trên Google Drive.")
 
         tab1, tab2, tab3 = st.tabs(["Chấm bài đơn", "Chấm bài hàng loạt", "Xem báo cáo"])
@@ -520,6 +528,8 @@ else:
                         # Nhúng PDF bằng Google Drive Viewer
                         pdf_display = f'<iframe src="{viewer_url}" width="100%" height="600px" frameborder="0"></iframe>'
                         st.markdown(pdf_display, unsafe_allow_html=True)
+                        # Thêm thông báo hướng dẫn
+                        st.info("Nếu đề thi không hiển thị, vui lòng sử dụng nút 'Tải đề thi (PDF) nếu không xem được' để tải file về và xem.")
                         # Cung cấp nút tải dự phòng
                         exam_content = download_file_from_drive(service, exam_file['id'])
                         st.download_button(
