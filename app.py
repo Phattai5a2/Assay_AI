@@ -485,8 +485,10 @@ else:
                             label=f"Tải kết quả: {file['name']}",
                             data=file_content,
                             file_name=file['name'],
-                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                            key=f"download_{file['id']}"  # Thêm key duy nhất dựa trên file ID
                         )
+                
                 else:
                     st.info("Chưa có kết quả chấm điểm nào được lưu.")
             elif uploaded_essays:
