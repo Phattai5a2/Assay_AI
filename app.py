@@ -33,85 +33,55 @@ USERS = {
     "student": "1"
 }
 
-# Xác thực Google Drive
 def authenticate_google_drive():
     SCOPES = ['https://www.googleapis.com/auth/drive']
     
-    # Kiểm tra sự tồn tại của file client_secrets.json
-    if not os.path.exists("client_secrets.json"):
+    # Đọc thông tin từ st.secrets
+    try:
+        creds_info = st.secrets["google_drive"]["credentials"]
+        client_secrets = st.secrets["google_drive"]["client_secrets"]
+    except KeyError:
         error_msg = (
-            "Không tìm thấy file client_secrets.json trong thư mục hiện tại.\n"
-            "Vui lòng làm theo các bước sau:\n"
-            "1. Truy cập Google Cloud Console (https://console.cloud.google.com/).\n"
-            "2. Tạo một dự án và bật Google Drive API.\n"
-            "3. Tạo OAuth 2.0 Client ID (chọn 'Desktop app').\n"
-            "4. Tải file client_secrets.json và đặt vào thư mục chứa file app.py.\n"
-            "Sau đó, chạy lại code."
+            "Không tìm thấy thông tin xác thực trong Secrets.\n"
+            "Vui lòng thêm client_secrets và credentials vào Secrets trên Streamlit Cloud."
         )
         print(error_msg)
         st.error(error_msg)
-        raise FileNotFoundError("Thiếu file client_secrets.json")
+        raise KeyError("Thiếu thông tin xác thực trong Secrets")
 
     creds = None
-    # Tải thông tin xác thực từ file credentials.json nếu tồn tại
-    if os.path.exists("credentials.json"):
-        try:
-            with open("credentials.json", "r") as f:
-                creds_info = json.load(f)
-            # Kiểm tra các trường bắt buộc
-            required_fields = ['client_id', 'client_secret', 'refresh_token', 'token_uri']
-            if not all(field in creds_info for field in required_fields):
-                print("File credentials.json thiếu các trường bắt buộc. Tạo lại credentials...")
+    # Tạo credentials từ thông tin trong Secrets
+    try:
+        creds = Credentials.from_authorized_user_info(info=creds_info, scopes=SCOPES)
+        # Làm mới token nếu đã hết hạn
+        if creds and creds.expired and creds.refresh_token:
+            try:
+                creds.refresh(Request())
+            except Exception as e:
+                print(f"Lỗi khi làm mới token: {str(e)}")
                 creds = None
-            else:
-                creds = Credentials.from_authorized_user_info(info=creds_info, scopes=SCOPES)
-                # Làm mới token nếu đã hết hạn
-                if creds and creds.expired and creds.refresh_token:
-                    try:
-                        creds.refresh(Request())
-                        # Lưu lại credentials đã làm mới
-                        with open("credentials.json", "w") as f:
-                            f.write(creds.to_json())
-                    except Exception as e:
-                        print(f"Lỗi khi làm mới token: {str(e)}")
-                        creds = None
-        except json.JSONDecodeError as e:
-            print(f"Lỗi khi đọc file credentials.json (định dạng JSON không hợp lệ): {str(e)}")
-            creds = None
-        except Exception as e:
-            print(f"Lỗi khi tải credentials.json: {str(e)}")
-            creds = None
+    except Exception as e:
+        print(f"Lỗi khi tạo credentials: {str(e)}")
+        creds = None
     
     # Nếu không có credentials hoặc credentials không hợp lệ, thực hiện xác thực mới
     if not creds or not creds.valid:
-        flow = InstalledAppFlow.from_client_secrets_file(
-            "client_secrets.json", SCOPES
-        )
         try:
-            # Thử mở trình duyệt tự động
-            creds = flow.run_local_server(port=0)
-        except Exception as e:
-            print(f"Không thể mở trình duyệt tự động: {str(e)}")
-            print("Vui lòng thực hiện xác thực thủ công.")
-            
-            # Tạo URL xác thực
+            flow = InstalledAppFlow.from_client_config(client_config=client_secrets, scopes=SCOPES)
+            # Vì không thể mở trình duyệt trên Streamlit Cloud, sử dụng xác thực thủ công
             flow.redirect_uri = "urn:ietf:wg:oauth:2.0:oob"
             auth_url, _ = flow.authorization_url(prompt='consent')
-            
-            # Mở URL trong trình duyệt thủ công
-            print(f"Vui lòng mở URL sau trong trình duyệt của bạn:\n{auth_url}")
-            webbrowser.open(auth_url)
-            
-            # Yêu cầu người dùng nhập mã xác thực
-            auth_code = input("Nhập mã xác thực từ trình duyệt: ")
-            
-            # Lấy token từ mã xác thực
-            flow.fetch_token(code=auth_code)
-            creds = flow.credentials
-        
-        # Lưu credentials vào file
-        with open("credentials.json", "w") as f:
-            f.write(creds.to_json())
+            st.error(f"Vui lòng mở URL sau trong trình duyệt để xác thực:\n{auth_url}")
+            auth_code = st.text_input("Nhập mã xác thực từ trình duyệt:")
+            if auth_code:
+                flow.fetch_token(code=auth_code)
+                creds = flow.credentials
+                # Cập nhật Secrets với credentials mới (tùy chọn, cần làm thủ công)
+                st.success("Xác thực thành công! Vui lòng cập nhật credentials trong Secrets với thông tin mới.")
+                st.write(creds.to_json())
+        except Exception as e:
+            st.error(f"Lỗi trong quá trình xác thực: {str(e)}")
+            return None
     
     # Tạo service để tương tác với Google Drive
     service = build('drive', 'v3', credentials=creds)
