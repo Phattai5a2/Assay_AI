@@ -205,7 +205,7 @@ def login():
     # Thêm tiêu đề "Đăng nhập hệ thống" với CSS để canh giữa và tăng kích thước chữ
     st.markdown(
         """
-        <h2 style='text-align: center; font-size: 36px; color: #333;'>Đăng nhập hệ thống</h2>
+        <h2 style='text-align: center; font-size: 36px;'>👤Đăng nhập hệ thống</h2>
         """,
         unsafe_allow_html=True
     )
@@ -333,7 +333,7 @@ if "logged_in" not in st.session_state or not st.session_state["logged_in"]:
     login()
 else:
     st.markdown(
-        "<h1 style='text-align: center; font-size: 40px;'>🎓 Hệ thống chấm bài thi tự luận bằng AI</h1>",
+        "<h1 style='text-align: center; font-size: 40px;'>🎓 Hệ thống chấm tự luận bằng AI</h1>",
         unsafe_allow_html=True
     )
     st.write(f"Xin chào, {st.session_state['user']}!")
