@@ -23,21 +23,6 @@ from googleapiclient.http import MediaIoBaseUpload, MediaIoBaseDownload
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 
-st.markdown(
-    """
-    <style>
-
-    [data-testid="stToolbar"] {
-            visibility: hidden;
-    }
-    [data-testid="stDecoration"] {
-        visibility: hidden;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-
 # Sử dụng OpenRouter API miễn phí
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
 # Lấy API key từ st.secrets
@@ -49,9 +34,36 @@ except KeyError:
 
 # Danh sách user giả lập
 USERS = {
-    "gv": "123",
-    "sv": "123"
+    "teacher": "1",
+    "student": "1"
 }
+
+# Hàm thay đổi con trỏ chuột
+def set_loading_cursor(status):
+    if status:
+        # Bật con trỏ "đang tải"
+        st.markdown(
+            """
+            <style>
+            html, body {
+                cursor: wait !important;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True
+        )
+    else:
+        # Tắt con trỏ "đang tải", trở về mặc định
+        st.markdown(
+            """
+            <style>
+            html, body {
+                cursor: default !important;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True
+        )
 
 # Xác thực Google Drive
 def authenticate_google_drive():
@@ -203,17 +215,17 @@ def login():
     # Thêm tiêu đề "Đăng nhập hệ thống" với CSS để canh giữa và tăng kích thước chữ
     st.markdown(
         """
-        <h2 style='text-align: center; font-size: 36px;'>👤Đăng nhập hệ thống</h2>
+        <h2 style='text-align: center; font-size: 36px; color: #333;'>Đăng nhập hệ thống</h2>
         """,
         unsafe_allow_html=True
     )
     user = st.text_input("Tên đăng nhập:")
     password = st.text_input("Mật khẩu:", type="password")
-    if st.button("Đăng nhập"):
+    if st.button("Đăng nhập", icon=":material/login:"):  # Thêm biểu tượng "login"
         if user in USERS and USERS[user] == password:
             st.session_state["logged_in"] = True
             st.session_state["user"] = user
-            st.session_state["role"] = "teacher" if user == "gv" else "sv"
+            st.session_state["role"] = "teacher" if user == "teacher" else "student"
             st.success(f"Xin chào, {user}!")
         else:
             st.error("Sai tài khoản hoặc mật khẩu!")
@@ -272,6 +284,12 @@ def grade_essay(student_text, answer_text, student_name=None, mssv=None):
     }
     
     try:
+        # Ghi log API key (ẩn một phần để bảo mật)
+        masked_api_key = API_KEY[:5] + "..." + API_KEY[-5:] if len(API_KEY) > 10 else API_KEY
+        print(f"Sending request with API Key: {masked_api_key}")
+        print(f"Request headers: {headers}")
+        print(f"Request payload: {payload}")
+        
         response = requests.post(API_URL, headers=headers, json=payload)
         if response.status_code == 200:
             grading_result = response.json()["choices"][0]["message"]["content"]
@@ -286,11 +304,9 @@ def grade_essay(student_text, answer_text, student_name=None, mssv=None):
                 save_to_csv(data, service, reports_folder_id)
             return grading_result
         else:
-            # Ghi log chi tiết về lỗi
             error_detail = response.json() if response.content else "No response content"
             st.error(f"Lỗi API: {response.status_code} - {error_detail}")
-            print(f"Request headers: {headers}")
-            print(f"Request payload: {payload}")
+            print(f"Response status: {response.status_code}, Response content: {error_detail}")
             return None
     except requests.exceptions.RequestException as e:
         st.error(f"Lỗi kết nối mạng: {str(e)}")
@@ -331,14 +347,14 @@ if "logged_in" not in st.session_state or not st.session_state["logged_in"]:
     login()
 else:
     st.markdown(
-        "<h1 style='text-align: center; font-size: 40px;'>🎓 Hệ thống chấm tự luận bằng AI</h1>",
+        "<h1 style='text-align: center; font-size: 40px;'>Hệ thống chấm bài thi tự luận bằng AI</h1>",
         unsafe_allow_html=True
     )
     st.write(f"Xin chào, {st.session_state['user']}!")
     if st.button("Đăng xuất"):
         logout()
     
-    role = st.session_state.get("role", "sv")
+    role = st.session_state.get("role", "student")
     
     if role == "teacher":
         st.subheader("Tải đề thi và đáp án")
@@ -372,7 +388,14 @@ else:
                         student_text = read_docx(uploaded_essay.read())
                         answer_content = download_file_from_drive(service, answer_file['id'])
                         answer_text = read_docx(answer_content)
-                        result = grade_essay(student_text, answer_text, student_name, mssv)
+                        
+                        # Hiển thị con trỏ "đang tải" và thông báo
+                        set_loading_cursor(True)
+                        with st.spinner("Đang chấm bài..."):
+                            result = grade_essay(student_text, answer_text, student_name, mssv)
+                        
+                        # Tắt con trỏ "đang tải"
+                        set_loading_cursor(False)
                         
                         if result:
                             st.subheader("Kết quả chấm điểm:")
@@ -421,36 +444,42 @@ else:
                         answer_text = read_docx(answer_content)
                         results = []
                         
-                        for idx, essay_file in enumerate(uploaded_essays, 1):
-                            filename = essay_file.name
-                            try:
-                                mssv, student_name = filename.replace(".docx", "").split("_", 1)
-                            except ValueError:
-                                st.warning(f"Tên file {filename} không đúng định dạng 'MSSV_HọTên.docx'. Bỏ qua.")
-                                continue
-                            
-                            student_text = read_docx(essay_file.read())
-                            grading_result = grade_essay(student_text, answer_text, student_name, mssv)
-                            
-                            if grading_result:
-                                total_score = extract_score(grading_result)
-                                results.append({
-                                    "STT": idx,
-                                    "MSSV": mssv,
-                                    "Họ và Tên": student_name,
-                                    "Tổng điểm tự luận": total_score
-                                })
+                        # Hiển thị con trỏ "đang tải" và thông báo
+                        set_loading_cursor(True)
+                        with st.spinner("Đang chấm bài hàng loạt..."):
+                            for idx, essay_file in enumerate(uploaded_essays, 1):
+                                filename = essay_file.name
+                                try:
+                                    mssv, student_name = filename.replace(".docx", "").split("_", 1)
+                                except ValueError:
+                                    st.warning(f"Tên file {filename} không đúng định dạng 'MSSV_HọTên.docx'. Bỏ qua.")
+                                    continue
                                 
-                                graded_filename = f"{mssv}_{student_name}_graded.docx"
-                                doc = docx.Document()
-                                doc.add_paragraph(f"MSSV: {mssv}")
-                                doc.add_paragraph(f"Họ và Tên: {student_name}")
-                                doc.add_paragraph(grading_result)
-                                doc_buffer = io.BytesIO()
-                                doc.save(doc_buffer)
-                                doc_buffer.seek(0)
+                                student_text = read_docx(essay_file.read())
+                                grading_result = grade_essay(student_text, answer_text, student_name, mssv)
                                 
-                                upload_file_to_drive(service, doc_buffer.getvalue(), graded_filename, graded_essays_folder_id)
+                                if grading_result:
+                                    total_score = extract_score(grading_result)
+                                    results.append({
+                                        "STT": idx,
+                                        "MSSV": mssv,
+                                        "Họ và Tên": student_name,
+                                        "Tổng điểm tự luận": total_score
+                                    })
+                                    
+                                    graded_filename = f"{mssv}_{student_name}_graded.docx"
+                                    doc = docx.Document()
+                                    doc.add_paragraph(f"MSSV: {mssv}")
+                                    doc.add_paragraph(f"Họ và Tên: {student_name}")
+                                    doc.add_paragraph(grading_result)
+                                    doc_buffer = io.BytesIO()
+                                    doc.save(doc_buffer)
+                                    doc_buffer.seek(0)
+                                    
+                                    upload_file_to_drive(service, doc_buffer.getvalue(), graded_filename, graded_essays_folder_id)
+                        
+                        # Tắt con trỏ "đang tải"
+                        set_loading_cursor(False)
                         
                         st.session_state["grading_results"] = results
                     else:
@@ -478,15 +507,19 @@ else:
                 file_list = response.get('files', [])
                 if file_list:
                     for file in file_list:
-                        file_content = download_file_from_drive(service, file['id'])
+                        # Hiển thị con trỏ "đang tải" khi tải file
+                        set_loading_cursor(True)
+                        with st.spinner(f"Đang tải file {file['name']}..."):
+                            file_content = download_file_from_drive(service, file['id'])
+                        set_loading_cursor(False)
+                        
                         st.download_button(
                             label=f"Tải kết quả: {file['name']}",
                             data=file_content,
                             file_name=file['name'],
                             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                            key=f"download_{file['id']}"  # Thêm key duy nhất dựa trên file ID
+                            key=f"download_{file['id']}"
                         )
-                
                 else:
                     st.info("Chưa có kết quả chấm điểm nào được lưu.")
             elif uploaded_essays:
@@ -510,7 +543,7 @@ else:
             else:
                 st.info("Chưa có báo cáo nào được lưu.")
     
-    elif role == "sv":
+    elif role == "student":
         exam_file = find_file_in_folder(service, "de_thi.pdf", exams_folder_id)
         if exam_file:
             if "mssv" not in st.session_state:
@@ -546,9 +579,13 @@ else:
                         pdf_display = f'<iframe src="{viewer_url}" width="100%" height="600px" frameborder="0"></iframe>'
                         st.markdown(pdf_display, unsafe_allow_html=True)
                         # Thêm thông báo hướng dẫn
-                        #st.info("Nếu đề thi không hiển thị, vui lòng sử dụng nút 'Tải đề thi (PDF) nếu không xem được' để tải file về và xem.")
+                        st.info("Nếu đề thi không hiển thị, vui lòng sử dụng nút 'Tải đề thi (PDF) nếu không xem được' để tải file về và xem.")
                         # Cung cấp nút tải dự phòng
-                        exam_content = download_file_from_drive(service, exam_file['id'])
+                        set_loading_cursor(True)
+                        with st.spinner("Đang tải đề thi..."):
+                            exam_content = download_file_from_drive(service, exam_file['id'])
+                        set_loading_cursor(False)
+                        
                         st.download_button(
                             label="Tải đề thi (PDF) nếu không xem được",
                             data=exam_content,
