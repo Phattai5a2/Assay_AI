@@ -23,6 +23,19 @@ from googleapiclient.http import MediaIoBaseUpload, MediaIoBaseDownload
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 
+st.markdown(
+    """
+    <style>
+
+    [data-testid="stToolbar"] {
+            visibility: hidden;
+    }
+    
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 # Sử dụng OpenRouter API miễn phí
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
 # Lấy API key từ st.secrets
