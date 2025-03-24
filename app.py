@@ -340,7 +340,7 @@ else:
     if st.button("Đăng xuất"):
         logout()
     
-    role = st.session_state.get("role", "student")
+    role = st.session_state.get("role", "sv")
     
     if role == "teacher":
         st.subheader("Tải đề thi và đáp án")
@@ -510,7 +510,7 @@ else:
             else:
                 st.info("Chưa có báo cáo nào được lưu.")
     
-    elif role == "student":
+    elif role == "sv":
         exam_file = find_file_in_folder(service, "de_thi.pdf", exams_folder_id)
         if exam_file:
             if "mssv" not in st.session_state:
