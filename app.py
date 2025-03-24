@@ -33,13 +33,19 @@ USERS = {
     "student": "1"
 }
 
+# Xác thực Google Drive
 def authenticate_google_drive():
     SCOPES = ['https://www.googleapis.com/auth/drive']
     
     # Đọc thông tin từ st.secrets
     try:
-        creds_info = st.secrets["google_drive"]["credentials"]
-        client_secrets = st.secrets["google_drive"]["client_secrets"]
+        # Lấy chuỗi JSON từ st.secrets
+        creds_info_str = st.secrets["google_drive"]["credentials"]
+        client_secrets_str = st.secrets["google_drive"]["client_secrets"]
+        
+        # Parse chuỗi JSON thành dictionary
+        creds_info = json.loads(creds_info_str)
+        client_secrets = json.loads(client_secrets_str)
     except KeyError:
         error_msg = (
             "Không tìm thấy thông tin xác thực trong Secrets.\n"
@@ -48,6 +54,15 @@ def authenticate_google_drive():
         print(error_msg)
         st.error(error_msg)
         raise KeyError("Thiếu thông tin xác thực trong Secrets")
+    except json.JSONDecodeError as e:
+        error_msg = (
+            "Dữ liệu trong Secrets không đúng định dạng JSON.\n"
+            f"Chi tiết lỗi: {str(e)}\n"
+            "Vui lòng kiểm tra lại client_secrets và credentials trong Secrets trên Streamlit Cloud."
+        )
+        print(error_msg)
+        st.error(error_msg)
+        raise ValueError("Dữ liệu Secrets không đúng định dạng JSON")
 
     creds = None
     # Tạo credentials từ thông tin trong Secrets
@@ -138,8 +153,8 @@ def find_file_in_folder(service, file_name, folder_id):
 # Khởi tạo Google Drive
 try:
     service = authenticate_google_drive()
-except FileNotFoundError:
-    st.stop()  # Dừng ứng dụng nếu không tìm thấy file client_secrets.json
+except (KeyError, ValueError):
+    st.stop()  # Dừng ứng dụng nếu có lỗi trong Secrets
 
 # Tạo các thư mục trên Google Drive
 root_folder_id = get_or_create_folder(service, "ExamSystem")
@@ -151,14 +166,13 @@ reports_folder_id = get_or_create_folder(service, "reports", root_folder_id)
 # Hàm kiểm tra đăng nhập
 def login():
     st.session_state["logged_in"] = False
-    
+    # Thêm tiêu đề "Đăng nhập hệ thống" với CSS để canh giữa và tăng kích thước chữ
     st.markdown(
         """
-        <h2 style='text-align: center; font-size: 36px; color: #fefcfa;'>🎓 Đăng nhập Hệ thống</h2>
+        <h2 style='text-align: center; font-size: 36px; color: #333;'>Đăng nhập hệ thống</h2>
         """,
         unsafe_allow_html=True
     )
-    
     user = st.text_input("Tên đăng nhập:")
     password = st.text_input("Mật khẩu:", type="password")
     if st.button("Đăng nhập"):
@@ -274,8 +288,6 @@ def get_base64_of_file(file_content):
     return base64.b64encode(file_content).decode()
 
 # Giao diện chính
-
-
 if "logged_in" not in st.session_state or not st.session_state["logged_in"]:
     login()
 else:
