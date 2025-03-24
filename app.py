@@ -319,7 +319,7 @@ else:
         st.subheader("Tải đề thi và đáp án")
         uploaded_exam_pdf = st.file_uploader("Tải lên đề thi (PDF)", type=["pdf"], key="exam_pdf")
         uploaded_answer = st.file_uploader("Tải lên đáp án mẫu", type=["docx"], key="answer")
-        num_questions = st.number_input("Số lượng câu hỏi trong đề thi (không bắt buộc):", min_value=1, max_value=100, value=1, step=1)
+        #num_questions = st.number_input("Số lượng câu hỏi trong đề thi (không bắt buộc):", min_value=1, max_value=100, value=1, step=1)
 
         if uploaded_exam_pdf and uploaded_answer:
             # Tải file lên Google Drive
