@@ -499,10 +499,15 @@ else:
                             st.rerun()
                     else:
                         st.subheader("Đề thi:")
-                        exam_content = download_file_from_drive(service, exam_file['id'])
-                        base64_pdf = get_base64_of_file(exam_content)
-                        pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="600px" type="application/pdf"></iframe>'
+                        # Lấy file PDF từ Google Drive
+                        file_id = exam_file['id']
+                        # Tạo URL cho Google Drive Viewer
+                        viewer_url = f"https://drive.google.com/viewerng/viewer?embedded=true&url=https://drive.google.com/uc?id={file_id}"
+                        # Nhúng PDF bằng Google Drive Viewer
+                        pdf_display = f'<iframe src="{viewer_url}" width="100%" height="600px" frameborder="0"></iframe>'
                         st.markdown(pdf_display, unsafe_allow_html=True)
+                        # Cung cấp nút tải dự phòng
+                        exam_content = download_file_from_drive(service, exam_file['id'])
                         st.download_button(
                             label="Tải đề thi (PDF) nếu không xem được",
                             data=exam_content,
