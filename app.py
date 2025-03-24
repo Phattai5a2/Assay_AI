@@ -25,7 +25,12 @@ from google.auth.transport.requests import Request
 
 # Sử dụng OpenRouter API miễn phí
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
-API_KEY = "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"  # Thay bằng API key miễn phí từ OpenRouter
+
+try:
+    API_KEY = st.secrets["openrouter"]["api_key"]
+except KeyError:
+    st.error("Không tìm thấy API key của OpenRouter trong Secrets. Vui lòng thêm 'openrouter.api_key' vào Secrets trên Streamlit Cloud.")
+    st.stop()
 
 # Danh sách user giả lập
 USERS = {
