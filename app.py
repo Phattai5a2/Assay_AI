@@ -51,8 +51,8 @@ except KeyError:
 
 # Danh sách user giả lập
 USERS = {
-    "teacher": "1",
-    "student": "1"
+    "gv": "123",
+    "sv": "123"
 }
 
 # Xác thực Google Drive
@@ -215,7 +215,7 @@ def login():
         if user in USERS and USERS[user] == password:
             st.session_state["logged_in"] = True
             st.session_state["user"] = user
-            st.session_state["role"] = "teacher" if user == "teacher" else "student"
+            st.session_state["role"] = "teacher" if user == "gv" else "sv"
             st.success(f"Xin chào, {user}!")
         else:
             st.error("Sai tài khoản hoặc mật khẩu!")
