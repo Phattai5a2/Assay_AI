@@ -546,7 +546,7 @@ else:
                         pdf_display = f'<iframe src="{viewer_url}" width="100%" height="600px" frameborder="0"></iframe>'
                         st.markdown(pdf_display, unsafe_allow_html=True)
                         # Thêm thông báo hướng dẫn
-                        st.info("Nếu đề thi không hiển thị, vui lòng sử dụng nút 'Tải đề thi (PDF) nếu không xem được' để tải file về và xem.")
+                        #st.info("Nếu đề thi không hiển thị, vui lòng sử dụng nút 'Tải đề thi (PDF) nếu không xem được' để tải file về và xem.")
                         # Cung cấp nút tải dự phòng
                         exam_content = download_file_from_drive(service, exam_file['id'])
                         st.download_button(
