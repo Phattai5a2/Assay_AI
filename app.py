@@ -122,7 +122,7 @@ def get_or_create_folder(service, folder_name, parent_id=None):
         folder = service.files().create(body=folder_metadata, fields='id').execute()
         return folder['id']
 
-# Tải file lên Google Drive
+# Tải file lên Google Drive và đặt quyền chia sẻ công khai
 def upload_file_to_drive(service, file_content, file_name, folder_id):
     file_metadata = {
         'name': file_name,
@@ -130,7 +130,16 @@ def upload_file_to_drive(service, file_content, file_name, folder_id):
     }
     media = MediaIoBaseUpload(io.BytesIO(file_content), mimetype='application/octet-stream')
     file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
-    return file['id']
+    
+    # Cập nhật quyền chia sẻ thành "Anyone with the link"
+    file_id = file['id']
+    permission = {
+        'type': 'anyone',
+        'role': 'reader'
+    }
+    service.permissions().create(fileId=file_id, body=permission).execute()
+    
+    return file_id
 
 # Tải file từ Google Drive
 def download_file_from_drive(service, file_id):
