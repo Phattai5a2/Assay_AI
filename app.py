@@ -26,9 +26,9 @@ from google.auth.transport.requests import Request
 st.markdown(
     """
     <style>
-   
-    [data-testid="stStatusWidget"] {
-        visibility: hidden;
+
+    [data-testid="stToolbar"] {
+            visibility: hidden;
     }
     [data-testid="stDecoration"] {
         visibility: hidden;
