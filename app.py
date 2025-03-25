@@ -1,18 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-Created on Tue Mar 25 13:03:25 2025
 
-@author: phattai
-"""
-
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Mon Mar 24 07:48:40 2025
-
-@author: phattai
-"""
 
 import streamlit as st
 import requests
