@@ -134,12 +134,12 @@ def login():
 
     if not st.session_state.get("logged_in"):
         st.markdown(
-            "<h2 style='text-align: center; font-size: 36px; color: #333;'>Đăng nhập hệ thống</h2>",
+            "<h2 style='text-align: center; font-size: 36px;'>Đăng nhập hệ thống</h2>",
             unsafe_allow_html=True
         )
         login_url = get_google_login_url()
         st.markdown(
-            f"<a href='{login_url}' style='display: inline-block; padding: 10px 20px; color: white; background-color: #4285F4; text-decoration: none; border-radius: 5px;'>Đăng nhập bằng Google</a>",
+            f"<a href='{login_url}' style='display: inline-block; padding: 10px 20px; color: white; background-color: #4285F4; text-decoration: none; border-radius: 3px;'>Đăng nhập bằng Google</a>",
             unsafe_allow_html=True
         )
 
