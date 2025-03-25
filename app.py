@@ -69,7 +69,11 @@ def get_user_info(credentials):
 
 # Hàm xử lý callback sau khi đăng nhập Google
 def handle_google_callback():
-    if "code" not in st.query_params or "oauth_state" not in st.session_state:
+    if "code" not in st.query_params:
+        st.error("Không tìm thấy query parameter 'code' trong URL.")
+        return None
+    if "oauth_state" not in st.session_state:
+        st.error("Không tìm thấy 'oauth_state' trong session state.")
         return None
 
     flow = Flow.from_client_config(
@@ -112,8 +116,9 @@ def login():
 
     # Xử lý callback ngay khi có query parameter "code"
     if "code" in st.query_params:
-        user_info, credentials = handle_google_callback()
-        if user_info:
+        result = handle_google_callback()
+        if result is not None:
+            user_info, credentials = result
             st.session_state["user_info"] = user_info
             st.session_state["credentials"] = credentials.to_json()
             st.session_state["logged_in"] = True
@@ -499,6 +504,7 @@ else:
                         selected_exam = st.selectbox(
                             "Chọn đề thi:",
                             options=class_exams["Exam Name"].tolist(),
+                            format_func=lambda x: f"{x} ({class_exams[class_exams['Exam Name'] == x]['Subject'].iloc[ Ascendingly, you can choose the following options:")",
                             format_func=lambda x: f"{x} ({class_exams[class_exams['Exam Name'] == x]['Subject'].iloc[0]})"
                         )
                         if st.button("Làm bài"):
