@@ -76,6 +76,7 @@ def handle_google_callback():
         st.error("Không tìm thấy 'oauth_state' trong session state.")
         return None
 
+    st.write("Debug: Đang tạo Flow từ client config")
     flow = Flow.from_client_config(
         {
             "web": {
@@ -90,11 +91,13 @@ def handle_google_callback():
         state=st.session_state["oauth_state"]
     )
     flow.redirect_uri = GOOGLE_REDIRECT_URI
+    st.write("Debug: Đang gọi flow.fetch_token()")
     try:
         flow.fetch_token(code=st.query_params["code"])
     except Exception as e:
         st.error(f"Lỗi khi lấy token từ Google: {str(e)}")
         return None
+    st.write("Debug: Đã lấy token thành công")
     credentials = flow.credentials
     user_info = get_user_info(credentials)
 
@@ -108,7 +111,9 @@ def handle_google_callback():
     return user_info, credentials
 
 # Xử lý /callback ngay đầu file
-if "code" in st.query_params:
+if "code" in st.query_params and "callback_processed" not in st.session_state:
+    st.session_state["callback_processed"] = True
+    st.write("Debug: Bắt đầu xử lý /callback")
     result = handle_google_callback()
     if result is not None:
         user_info, credentials = result
@@ -116,11 +121,16 @@ if "code" in st.query_params:
         st.session_state["credentials"] = credentials.to_json()
         st.session_state["logged_in"] = True
         st.query_params.clear()
+        st.write("Debug: Đã xóa query params, kiểm tra lại:", st.query_params)
         st.rerun()
     else:
         st.error("Đăng nhập thất bại. Vui lòng thử lại.")
         st.query_params.clear()
+        st.write("Debug: Đã xóa query params (trường hợp lỗi), kiểm tra lại:", st.query_params)
         st.rerun()
+elif "callback_processed" in st.session_state:
+    st.session_state.pop("callback_processed")
+    st.query_params.clear()
 
 # Hàm đăng nhập
 def login():
