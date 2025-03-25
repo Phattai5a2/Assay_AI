@@ -139,7 +139,7 @@ def login():
         )
         login_url = get_google_login_url()
         st.markdown(
-            f"<a href='{login_url}' style='display: inline-block; padding: 10px 20px; color: white; background-color: #4285F4; text-decoration: none; border-radius: 3px;'>Đăng nhập bằng Google</a>",
+            f"<a href='{login_url}' style='display: inline-block; center; padding: 10px 20px; color: white; background-color: #4285F4; text-decoration: none; border-radius: 3px;'>Đăng nhập bằng Google</a>",
             unsafe_allow_html=True
         )
 
