@@ -504,7 +504,6 @@ else:
                         selected_exam = st.selectbox(
                             "Chọn đề thi:",
                             options=class_exams["Exam Name"].tolist(),
-                            format_func=lambda x: f"{x} ({class_exams[class_exams['Exam Name'] == x]['Subject'].iloc[ Ascendingly, you can choose the following options:")",
                             format_func=lambda x: f"{x} ({class_exams[class_exams['Exam Name'] == x]['Subject'].iloc[0]})"
                         )
                         if st.button("Làm bài"):
