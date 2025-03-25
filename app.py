@@ -107,27 +107,27 @@ def handle_google_callback():
 
     return user_info, credentials
 
+# Xử lý /callback ngay đầu file
+if "code" in st.query_params:
+    result = handle_google_callback()
+    if result is not None:
+        user_info, credentials = result
+        st.session_state["user_info"] = user_info
+        st.session_state["credentials"] = credentials.to_json()
+        st.session_state["logged_in"] = True
+        st.query_params.clear()
+        st.rerun()
+    else:
+        st.error("Đăng nhập thất bại. Vui lòng thử lại.")
+        st.query_params.clear()
+        st.rerun()
+
 # Hàm đăng nhập
 def login():
     if "user_info" not in st.session_state:
         st.session_state["user_info"] = None
     if "credentials" not in st.session_state:
         st.session_state["credentials"] = None
-
-    # Xử lý callback ngay khi có query parameter "code"
-    if "code" in st.query_params:
-        result = handle_google_callback()
-        if result is not None:
-            user_info, credentials = result
-            st.session_state["user_info"] = user_info
-            st.session_state["credentials"] = credentials.to_json()
-            st.session_state["logged_in"] = True
-            st.query_params.clear()
-            st.rerun()
-        else:
-            st.error("Đăng nhập thất bại. Vui lòng thử lại.")
-            st.query_params.clear()
-            st.rerun()
 
     if not st.session_state.get("logged_in"):
         st.markdown(
