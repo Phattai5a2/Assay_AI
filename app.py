@@ -1,7 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
-
 import streamlit as st
 import requests
 import docx
@@ -17,20 +13,7 @@ import re
 from datetime import datetime
 import uuid
 
-
-st.markdown(
-    """
-    <style>
-
-    [data-testid="stToolbar"] {
-            visibility: hidden;
-    }
-    
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-
+# Kiểm tra và lấy thông tin từ st.secrets
 try:
     GOOGLE_CLIENT_ID = st.secrets["google_oauth"]["client_id"]
     GOOGLE_CLIENT_SECRET = st.secrets["google_oauth"]["client_secret"]
@@ -103,7 +86,11 @@ def handle_google_callback():
         state=st.session_state["oauth_state"]
     )
     flow.redirect_uri = GOOGLE_REDIRECT_URI
-    flow.fetch_token(code=st.query_params["code"])
+    try:
+        flow.fetch_token(code=st.query_params["code"])
+    except Exception as e:
+        st.error(f"Lỗi khi lấy token từ Google: {str(e)}")
+        return None
     credentials = flow.credentials
     user_info = get_user_info(credentials)
 
@@ -123,6 +110,7 @@ def login():
     if "credentials" not in st.session_state:
         st.session_state["credentials"] = None
 
+    # Xử lý callback ngay khi có query parameter "code"
     if "code" in st.query_params:
         user_info, credentials = handle_google_callback()
         if user_info:
@@ -131,15 +119,19 @@ def login():
             st.session_state["logged_in"] = True
             st.query_params.clear()
             st.rerun()
+        else:
+            st.error("Đăng nhập thất bại. Vui lòng thử lại.")
+            st.query_params.clear()
+            st.rerun()
 
     if not st.session_state.get("logged_in"):
         st.markdown(
-            "<h2 style='text-align: center; font-size: 36px;'>Đăng nhập hệ thống</h2>",
+            "<h2 style='text-align: center; font-size: 36px; color: #333;'>Đăng nhập hệ thống</h2>",
             unsafe_allow_html=True
         )
         login_url = get_google_login_url()
         st.markdown(
-            f"<a href='{login_url}' style='display: inline-block; padding: 10px 20px; color: white; background-color: #4285F4; text-decoration: none; border-radius: 3px;'>Đăng nhập bằng Google</a>",
+            f"<a href='{login_url}' style='display: inline-block; padding: 10px 20px; color: white; background-color: #4285F4; text-decoration: none; border-radius: 5px;'>Đăng nhập bằng Google</a>",
             unsafe_allow_html=True
         )
 
