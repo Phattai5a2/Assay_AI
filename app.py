@@ -158,15 +158,35 @@ def get_or_create_folder(service, folder_name, parent_id=None):
         folder = service.files().create(body=folder_metadata, fields='id').execute()
         return folder['id']
 
+# Xóa tất cả file trong một thư mục trên Google Drive
+def clear_folder(service, folder_id):
+    try:
+        response = service.files().list(q=f"'{folder_id}' in parents and trashed=false", spaces='drive').execute()
+        file_list = response.get('files', [])
+        for file in file_list:
+            service.files().delete(fileId=file['id']).execute()
+    except Exception as e:
+        st.error(f"Lỗi khi xóa file trong thư mục: {str(e)}")
+
 # Tải file lên Google Drive và đặt quyền chia sẻ công khai
 def upload_file_to_drive(service, file_content, file_name, folder_id, update_if_exists=True):
-    existing_file = find_file_in_folder(service, file_name, folder_id)
+    # Tìm tất cả các file có tên bắt đầu bằng {mssv}_{student_name}_graded
+    try:
+        # Trích xuất MSSV và tên sinh viên từ tên file
+        base_name = file_name.replace("_graded.docx", "")
+        query = f"'{folder_id}' in parents and trashed=false"
+        response = service.files().list(q=query, spaces='drive').execute()
+        files = response.get('files', [])
+        
+        # Xóa tất cả các file có tên bắt đầu bằng base_name
+        for file in files:
+            if file['name'].startswith(base_name):
+                service.files().delete(fileId=file['id']).execute()
+    except Exception as e:
+        st.error(f"Lỗi khi xóa file trùng tên: {str(e)}")
+        return None
     
-    if existing_file and not update_if_exists:
-        return existing_file['id']
-    elif existing_file and update_if_exists:
-        service.files().delete(fileId=existing_file['id']).execute()
-    
+    # Tải file mới lên
     file_metadata = {
         'name': file_name,
         'parents': [folder_id]
@@ -371,10 +391,25 @@ def save_to_csv(data, service, folder_id):
 
 # Hàm chấm điểm bài tự luận
 def grade_essay(student_text, answer_text, student_name=None, mssv=None):
-    prompt = f"""Bạn là giáo viên. Hãy chấm bài sau đây.
-    \n\nĐáp án mẫu:\n{answer_text}
-    \n\nBài làm của học sinh:\n{student_text}
-    \n\nHãy đưa ra số điểm (thang 10) và nhận xét chi tiết. Định dạng điểm phải là: Điểm: [số điểm] (ví dụ: Điểm: 8.5)"""
+    prompt = f"""Bạn là một giảng viên chấm bài chuyên nghiệp. Hãy chấm bài tự luận sau đây.
+
+    **Đáp án mẫu:**
+    {answer_text}
+
+    **Bài làm của sinh viên:**
+    {student_text}
+
+    **Yêu cầu chấm bài:**
+    1. Đưa ra nhận xét chi tiết về bài làm của sinh viên.
+    2. Chấm điểm trên thang 10. Định dạng điểm phải là: **Điểm: [số điểm]** (ví dụ: Điểm: 8.5).
+    3. Cuối cùng, ghi rõ tổng điểm theo định dạng: **Tổng điểm: [số điểm]** (ví dụ: Tổng điểm: 8.5). Dòng này phải nằm ở cuối cùng và không được bỏ sót.
+
+    **Ví dụ định dạng kết quả:**
+    Nhận xét: Bài làm của sinh viên trình bày rõ ràng, lập luận tốt nhưng còn thiếu một số ý chính.
+    Điểm: 8.5
+    Tổng điểm: 8.5
+
+    Bắt đầu chấm bài:"""
     
     headers = {
         "Authorization": f"Bearer {API_KEY}",
@@ -383,7 +418,7 @@ def grade_essay(student_text, answer_text, student_name=None, mssv=None):
     
     payload = {
         "model": "mistralai/mistral-small-3.1-24b-instruct:free",
-        "messages": [{"role": "system", "content": "Bạn là một giáo viên chấm bài chuyên nghiệp."},
+        "messages": [{"role": "system", "content": "Bạn là một giảng viên chấm bài chuyên nghiệp."},
                      {"role": "user", "content": prompt}],
         "temperature": 0.7
     }
@@ -415,26 +450,36 @@ def grade_essay(student_text, answer_text, student_name=None, mssv=None):
 
 # Hàm trích xuất điểm từ kết quả chấm
 def extract_score(grading_result):
-    # Định dạng: Điểm: 5.5/9 (trích xuất 5.5)
-    match = re.search(r"Điểm:\s*(\d+(\.\d+)?)/\d+", grading_result, re.IGNORECASE)
+    # Ưu tiên tìm "Tổng điểm:" trước
+    match = re.search(r"Tổng điểm:\s*(\d+(\.\d+)?)", grading_result, re.IGNORECASE)
     if match:
         return float(match.group(1))
-    # Định dạng: Điểm: 5.5
+    
+    # Nếu không tìm thấy "Tổng điểm:", tìm "Điểm:"
     match = re.search(r"Điểm:\s*(\d+(\.\d+)?)", grading_result, re.IGNORECASE)
     if match:
         return float(match.group(1))
-    # Định dạng: Score: 5.5
+    
+    # Tìm định dạng: Điểm: 5.5/9 (trích xuất 5.5)
+    match = re.search(r"Điểm:\s*(\d+(\.\d+)?)/\d+", grading_result, re.IGNORECASE)
+    if match:
+        return float(match.group(1))
+    
+    # Tìm định dạng: Score: 5.5
     match = re.search(r"Score:\s*(\d+(\.\d+)?)", grading_result, re.IGNORECASE)
     if match:
         return float(match.group(1))
-    # Định dạng: 5.5/10
+    
+    # Tìm định dạng: 5.5/10
     match = re.search(r"(\d+(\.\d+)?)/10", grading_result)
     if match:
         return float(match.group(1))
-    # Định dạng: Một dòng chỉ chứa số (ví dụ: 5.5)
+    
+    # Tìm định dạng: Một dòng chỉ chứa số (ví dụ: 5.5)
     match = re.search(r"^\s*(\d+(\.\d+)?)\s*$", grading_result, re.MULTILINE)
     if match:
         return float(match.group(1))
+    
     st.warning(f"Không thể trích xuất điểm từ kết quả: {grading_result}")
     return 0.0
 
@@ -706,6 +751,12 @@ else:
                         st.session_state["start_grading"] = True
                         st.session_state["grading_results"] = []  # Reset kết quả trước khi chấm
                         
+                        # Xóa tất cả file cũ trong thư mục graded_essays trước khi chấm
+                        set_loading_cursor(True)
+                        with st.spinner("Đang xóa các file kết quả cũ..."):
+                            clear_folder(service, graded_essays_folder_id)
+                        set_loading_cursor(False)
+                        
                         answer_file = next(exam for exam in exam_list if exam["answer_file"] == selected_exam)
                         answer_content = download_file_from_drive(service, answer_file['answer_id'])
                         answer_text = read_docx(answer_content)
@@ -776,12 +827,14 @@ else:
                     zip_buffer = io.BytesIO()
                     with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
                         for file in file_list:
-                            set_loading_cursor(True)
-                            with st.spinner(f"Đang xử lý file {file['name']}..."):
-                                file_content = download_file_from_drive(service, file['id'])
-                            set_loading_cursor(False)
-                            if file_content:
-                                zip_file.writestr(file['name'], file_content)
+                            # Chỉ thêm các file có tên đúng định dạng {mssv}_{student_name}_graded.docx
+                            if file['name'].endswith("_graded.docx") and "_graded_graded" not in file['name']:
+                                set_loading_cursor(True)
+                                with st.spinner(f"Đang xử lý file {file['name']}..."):
+                                    file_content = download_file_from_drive(service, file['id'])
+                                set_loading_cursor(False)
+                                if file_content:
+                                    zip_file.writestr(file['name'], file_content)
                     
                     zip_buffer.seek(0)
                     st.download_button(
