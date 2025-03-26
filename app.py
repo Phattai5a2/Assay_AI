@@ -4,9 +4,7 @@ import docx
 import pandas as pd
 from streamlit_quill import st_quill
 import base64
-import os
 import io
-import webbrowser
 import json
 import re
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -15,14 +13,32 @@ from googleapiclient.http import MediaIoBaseUpload, MediaIoBaseDownload
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 
+# Khởi tạo các biến trạng thái
+if "logged_in" not in st.session_state:
+    st.session_state["logged_in"] = False
+if "user" not in st.session_state:
+    st.session_state["user"] = None
+if "role" not in st.session_state:
+    st.session_state["role"] = None
+if "uploaded_files" not in st.session_state:
+    st.session_state["uploaded_files"] = []
+if "grading_results" not in st.session_state:
+    st.session_state["grading_results"] = []
+if "start_exam" not in st.session_state:
+    st.session_state["start_exam"] = False
+if "current_num_questions" not in st.session_state:
+    st.session_state["current_num_questions"] = 1
+if "mssv" not in st.session_state:
+    st.session_state["mssv"] = ""
+if "full_name" not in st.session_state:
+    st.session_state["full_name"] = ""
+
 st.markdown(
     """
     <style>
-
     [data-testid="stToolbar"] {
             visibility: hidden;
     }
-    
     </style>
     """,
     unsafe_allow_html=True
@@ -30,7 +46,6 @@ st.markdown(
 
 # Sử dụng OpenRouter API miễn phí
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
-# Lấy API key từ st.secrets
 try:
     API_KEY = st.secrets["openrouter"]["api_key"]
 except KeyError:
@@ -46,7 +61,6 @@ USERS = {
 # Hàm thay đổi con trỏ chuột
 def set_loading_cursor(status):
     if status:
-        # Bật con trỏ "đang tải"
         st.markdown(
             """
             <style>
@@ -58,7 +72,6 @@ def set_loading_cursor(status):
             unsafe_allow_html=True
         )
     else:
-        # Tắt con trỏ "đang tải", trở về mặc định
         st.markdown(
             """
             <style>
@@ -74,13 +87,9 @@ def set_loading_cursor(status):
 def authenticate_google_drive():
     SCOPES = ['https://www.googleapis.com/auth/drive']
     
-    # Đọc thông tin từ st.secrets
     try:
-        # Lấy chuỗi JSON từ st.secrets
         creds_info_str = st.secrets["google_drive"]["credentials"]
         client_secrets_str = st.secrets["google_drive"]["client_secrets"]
-        
-        # Parse chuỗi JSON thành dictionary
         creds_info = json.loads(creds_info_str)
         client_secrets = json.loads(client_secrets_str)
     except KeyError:
@@ -88,54 +97,36 @@ def authenticate_google_drive():
             "Không tìm thấy thông tin xác thực trong Secrets.\n"
             "Vui lòng thêm client_secrets và credentials vào Secrets trên Streamlit Cloud."
         )
-        print(error_msg)
         st.error(error_msg)
-        raise KeyError("Thiếu thông tin xác thực trong Secrets")
+        st.stop()
     except json.JSONDecodeError as e:
         error_msg = (
             "Dữ liệu trong Secrets không đúng định dạng JSON.\n"
             f"Chi tiết lỗi: {str(e)}\n"
             "Vui lòng kiểm tra lại client_secrets và credentials trong Secrets trên Streamlit Cloud."
         )
-        print(error_msg)
         st.error(error_msg)
-        raise ValueError("Dữ liệu Secrets không đúng định dạng JSON")
+        st.stop()
 
     creds = None
-    # Tạo credentials từ thông tin trong Secrets
     try:
         creds = Credentials.from_authorized_user_info(info=creds_info, scopes=SCOPES)
-        # Làm mới token nếu đã hết hạn
         if creds and creds.expired and creds.refresh_token:
             try:
                 creds.refresh(Request())
             except Exception as e:
-                print(f"Lỗi khi làm mới token: {str(e)}")
-                creds = None
+                st.error(f"Lỗi khi làm mới token: {str(e)}")
+                st.error("Vui lòng cập nhật credentials mới trong Secrets trên Streamlit Cloud.")
+                st.stop()
     except Exception as e:
-        print(f"Lỗi khi tạo credentials: {str(e)}")
-        creds = None
+        st.error(f"Lỗi khi tạo credentials: {str(e)}")
+        st.error("Vui lòng kiểm tra hoặc cập nhật credentials trong Secrets trên Streamlit Cloud.")
+        st.stop()
     
-    # Nếu không có credentials hoặc credentials không hợp lệ, thực hiện xác thực mới
     if not creds or not creds.valid:
-        try:
-            flow = InstalledAppFlow.from_client_config(client_config=client_secrets, scopes=SCOPES)
-            # Vì không thể mở trình duyệt trên Streamlit Cloud, sử dụng xác thực thủ công
-            flow.redirect_uri = "urn:ietf:wg:oauth:2.0:oob"
-            auth_url, _ = flow.authorization_url(prompt='consent')
-            st.error(f"Vui lòng mở URL sau trong trình duyệt để xác thực:\n{auth_url}")
-            auth_code = st.text_input("Nhập mã xác thực từ trình duyệt:")
-            if auth_code:
-                flow.fetch_token(code=auth_code)
-                creds = flow.credentials
-                # Cập nhật Secrets với credentials mới (tùy chọn, cần làm thủ công)
-                st.success("Xác thực thành công! Vui lòng cập nhật credentials trong Secrets với thông tin mới.")
-                st.write(creds.to_json())
-        except Exception as e:
-            st.error(f"Lỗi trong quá trình xác thực: {str(e)}")
-            return None
+        st.error("Credentials không hợp lệ. Vui lòng cập nhật credentials mới trong Secrets trên Streamlit Cloud.")
+        st.stop()
     
-    # Tạo service để tương tác với Google Drive
     service = build('drive', 'v3', credentials=creds)
     return service
 
@@ -168,7 +159,6 @@ def upload_file_to_drive(service, file_content, file_name, folder_id):
     media = MediaIoBaseUpload(io.BytesIO(file_content), mimetype='application/octet-stream')
     file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
     
-    # Cập nhật quyền chia sẻ thành "Anyone with the link"
     file_id = file['id']
     try:
         permission = {
@@ -176,10 +166,9 @@ def upload_file_to_drive(service, file_content, file_name, folder_id):
             'role': 'reader'
         }
         service.permissions().create(fileId=file_id, body=permission).execute()
-        print(f"Đã đặt quyền chia sẻ công khai cho file {file_name} (ID: {file_id})")
     except Exception as e:
-        print(f"Lỗi khi đặt quyền chia sẻ cho file {file_name}: {str(e)}")
-        raise Exception(f"Không thể đặt quyền chia sẻ công khai cho file {file_name}: {str(e)}")
+        st.error(f"Không thể đặt quyền chia sẻ công khai cho file {file_name}: {str(e)}")
+        raise
     
     return file_id
 
@@ -204,8 +193,9 @@ def find_file_in_folder(service, file_name, folder_id):
 # Khởi tạo Google Drive
 try:
     service = authenticate_google_drive()
-except (KeyError, ValueError):
-    st.stop()  # Dừng ứng dụng nếu có lỗi trong Secrets
+except Exception as e:
+    st.error(f"Lỗi khi khởi tạo Google Drive: {str(e)}")
+    st.stop()
 
 # Tạo các thư mục trên Google Drive
 root_folder_id = get_or_create_folder(service, "ExamSystem")
@@ -217,7 +207,6 @@ reports_folder_id = get_or_create_folder(service, "reports", root_folder_id)
 # Hàm kiểm tra đăng nhập
 def login():
     st.session_state["logged_in"] = False
-    # Thêm tiêu đề "Đăng nhập hệ thống" với CSS để canh giữa và tăng kích thước chữ
     st.markdown(
         """
         <h2 style='text-align: center; font-size: 36px;'>👤Đăng nhập hệ thống</h2>
@@ -226,7 +215,7 @@ def login():
     )
     user = st.text_input("Tên đăng nhập:")
     password = st.text_input("Mật khẩu:", type="password")
-    if st.button("Đăng nhập", icon=":material/login:"):  # Thêm biểu tượng "login"
+    if st.button("Đăng nhập", icon=":material/login:"):
         if user in USERS and USERS[user] == password:
             st.session_state["logged_in"] = True
             st.session_state["user"] = user
@@ -250,22 +239,18 @@ def read_docx(file_content):
 def save_to_csv(data, service, folder_id):
     df = pd.DataFrame(data)
     csv_buffer = io.StringIO()
-    # Lưu DataFrame vào buffer với mã hóa utf-8-sig
     df.to_csv(csv_buffer, index=False, encoding='utf-8-sig')
     
     existing_file = find_file_in_folder(service, "grading_report.csv", folder_id)
     if existing_file:
-        # Đọc file hiện có với mã hóa utf-8-sig
         existing_content = download_file_from_drive(service, existing_file['id']).decode('utf-8-sig')
         existing_df = pd.read_csv(io.StringIO(existing_content), encoding='utf-8-sig')
         df = pd.concat([existing_df, df], ignore_index=True)
-        # Lưu lại vào buffer với mã hóa utf-8-sig
         df.to_csv(csv_buffer, index=False, encoding='utf-8-sig')
         file_metadata = {'name': "grading_report.csv"}
         media = MediaIoBaseUpload(io.BytesIO(csv_buffer.getvalue().encode('utf-8')), mimetype='text/csv')
         service.files().update(fileId=existing_file['id'], body=file_metadata, media_body=media).execute()
     else:
-        # Lưu file mới với mã hóa utf-8-sig
         df.to_csv(csv_buffer, index=False, encoding='utf-8-sig')
         upload_file_to_drive(service, csv_buffer.getvalue().encode('utf-8'), "grading_report.csv", folder_id)
 
@@ -289,13 +274,7 @@ def grade_essay(student_text, answer_text, student_name=None, mssv=None):
     }
     
     try:
-        # Ghi log API key (ẩn một phần để bảo mật)
-        masked_api_key = API_KEY[:5] + "..." + API_KEY[-5:] if len(API_KEY) > 10 else API_KEY
-        print(f"Sending request with API Key: {masked_api_key}")
-        print(f"Request headers: {headers}")
-        print(f"Request payload: {payload}")
-        
-        response = requests.post(API_URL, headers=headers, json=payload)
+        response = requests.post(API_URL, headers=headers, json=payload, timeout=30)
         if response.status_code == 200:
             grading_result = response.json()["choices"][0]["message"]["content"]
             if student_name and mssv:
@@ -311,11 +290,12 @@ def grade_essay(student_text, answer_text, student_name=None, mssv=None):
         else:
             error_detail = response.json() if response.content else "No response content"
             st.error(f"Lỗi API: {response.status_code} - {error_detail}")
-            print(f"Response status: {response.status_code}, Response content: {error_detail}")
             return None
+    except requests.exceptions.Timeout:
+        st.error("Yêu cầu API đã hết thời gian (timeout). Vui lòng thử lại sau.")
+        return None
     except requests.exceptions.RequestException as e:
         st.error(f"Lỗi kết nối mạng: {str(e)}")
-        print(f"Network error details: {str(e)}")
         return None
 
 # Hàm trích xuất điểm từ kết quả chấm
@@ -343,12 +323,8 @@ def load_grading_report(service, folder_id):
         return pd.read_csv(io.StringIO(content), encoding='utf-8-sig')
     return None
 
-# Hàm mã hóa file PDF thành base64 để nhúng vào HTML
-def get_base64_of_file(file_content):
-    return base64.b64encode(file_content).decode()
-
 # Giao diện chính
-if "logged_in" not in st.session_state or not st.session_state["logged_in"]:
+if not st.session_state["logged_in"]:
     login()
 else:
     st.markdown(
@@ -367,7 +343,6 @@ else:
         uploaded_answer = st.file_uploader("Tải lên đáp án mẫu", type=["docx"], key="answer")
 
         if uploaded_exam_pdf and uploaded_answer:
-            # Tải file lên Google Drive
             exam_pdf_content = uploaded_exam_pdf.read()
             answer_content = uploaded_answer.read()
             
@@ -394,12 +369,10 @@ else:
                         answer_content = download_file_from_drive(service, answer_file['id'])
                         answer_text = read_docx(answer_content)
                         
-                        # Hiển thị con trỏ "đang tải" và thông báo
                         set_loading_cursor(True)
                         with st.spinner("Đang chấm bài..."):
                             result = grade_essay(student_text, answer_text, student_name, mssv)
                         
-                        # Tắt con trỏ "đang tải"
                         set_loading_cursor(False)
                         
                         if result:
@@ -430,12 +403,12 @@ else:
                     st.error("Không tìm thấy đáp án mẫu trên Google Drive. Vui lòng tải lên đáp án trước.")
 
         with tab2:
-            if "uploaded_files" not in st.session_state:
-                st.session_state["uploaded_files"] = []
-            if "grading_results" not in st.session_state:
-                st.session_state["grading_results"] = []
-
             uploaded_essays = st.file_uploader("Tải lên nhiều bài làm tự luận", type=["docx"], accept_multiple_files=True, key="batch_essays")
+            
+            MAX_FILES = 10
+            if uploaded_essays and len(uploaded_essays) > MAX_FILES:
+                st.error(f"Vui lòng chỉ tải lên tối đa {MAX_FILES} file để chấm hàng loạt.")
+                uploaded_essays = uploaded_essays[:MAX_FILES]
             
             current_files = [file.name for file in uploaded_essays] if uploaded_essays else []
             if current_files != st.session_state["uploaded_files"]:
@@ -449,7 +422,6 @@ else:
                         answer_text = read_docx(answer_content)
                         results = []
                         
-                        # Hiển thị con trỏ "đang tải" và thông báo
                         set_loading_cursor(True)
                         with st.spinner("Đang chấm bài hàng loạt..."):
                             for idx, essay_file in enumerate(uploaded_essays, 1):
@@ -483,9 +455,7 @@ else:
                                     
                                     upload_file_to_drive(service, doc_buffer.getvalue(), graded_filename, graded_essays_folder_id)
                         
-                        # Tắt con trỏ "đang tải"
                         set_loading_cursor(False)
-                        
                         st.session_state["grading_results"] = results
                     else:
                         st.error("Không tìm thấy đáp án mẫu trên Google Drive. Vui lòng tải lên đáp án trước.")
@@ -495,7 +465,6 @@ else:
                 st.subheader("Kết quả chấm điểm hàng loạt:")
                 st.dataframe(df)
                 
-                # Lưu file CSV với mã hóa utf-8-sig để tải về
                 csv_buffer = io.StringIO()
                 df.to_csv(csv_buffer, index=False, encoding='utf-8-sig')
                 csv = csv_buffer.getvalue().encode('utf-8')
@@ -512,7 +481,6 @@ else:
                 file_list = response.get('files', [])
                 if file_list:
                     for file in file_list:
-                        # Hiển thị con trỏ "đang tải" khi tải file
                         set_loading_cursor(True)
                         with st.spinner(f"Đang tải file {file['name']}..."):
                             file_content = download_file_from_drive(service, file['id'])
@@ -535,7 +503,6 @@ else:
             if df is not None:
                 st.subheader("Báo cáo điểm tổng hợp:")
                 st.dataframe(df)
-                # Lưu file CSV với mã hóa utf-8-sig để tải về
                 csv_buffer = io.StringIO()
                 df.to_csv(csv_buffer, index=False, encoding='utf-8-sig')
                 csv = csv_buffer.getvalue().encode('utf-8')
@@ -551,11 +518,6 @@ else:
     elif role == "student":
         exam_file = find_file_in_folder(service, "de_thi.pdf", exams_folder_id)
         if exam_file:
-            if "mssv" not in st.session_state:
-                st.session_state["mssv"] = ""
-            if "full_name" not in st.session_state:
-                st.session_state["full_name"] = ""
-
             mssv = st.text_input("MSSV:", value=st.session_state["mssv"], key="mssv_input")
             full_name = st.text_input("Họ và Tên:", value=st.session_state["full_name"], key="full_name_input")
 
@@ -566,9 +528,6 @@ else:
                 tab1, tab2 = st.tabs(["Làm bài thi online", "Nộp bài"])
                 
                 with tab1:
-                    if "start_exam" not in st.session_state:
-                        st.session_state["start_exam"] = False
-
                     if not st.session_state["start_exam"]:
                         if st.button("Làm bài"):
                             st.session_state["start_exam"] = True
@@ -576,16 +535,12 @@ else:
                             st.rerun()
                     else:
                         st.subheader("Đề thi:")
-                        # Lấy file PDF từ Google Drive
                         file_id = exam_file['id']
-                        # Tạo URL cho Google Drive Viewer
                         viewer_url = f"https://drive.google.com/viewerng/viewer?embedded=true&url=https://drive.google.com/uc?id={file_id}"
-                        # Nhúng PDF bằng Google Drive Viewer
                         pdf_display = f'<iframe src="{viewer_url}" width="100%" height="600px" frameborder="0"></iframe>'
                         st.markdown(pdf_display, unsafe_allow_html=True)
-                        # Thêm thông báo hướng dẫn
                         st.info("Nếu đề thi không hiển thị, vui lòng sử dụng nút 'Tải đề thi (PDF) nếu không xem được' để tải file về và xem.")
-                        # Cung cấp nút tải dự phòng
+                        
                         set_loading_cursor(True)
                         with st.spinner("Đang tải đề thi..."):
                             exam_content = download_file_from_drive(service, exam_file['id'])
@@ -598,9 +553,6 @@ else:
                             mime="application/pdf"
                         )
                         
-                        if "current_num_questions" not in st.session_state:
-                            st.session_state["current_num_questions"] = 1
-
                         answers = []
                         for i in range(st.session_state["current_num_questions"]):
                             st.write(f"**Câu {i+1}**")
@@ -642,4 +594,3 @@ else:
                         st.success(f"Bài làm đã được lưu trên Google Drive với tên: {filename}")
         else:
             st.error("Không tìm thấy đề thi trên Google Drive. Vui lòng liên hệ giáo viên để tải đề thi (PDF).")
-            
