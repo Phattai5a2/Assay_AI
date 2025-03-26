@@ -34,6 +34,8 @@ if "full_name" not in st.session_state:
     st.session_state["full_name"] = ""
 if "exam_access_granted" not in st.session_state:
     st.session_state["exam_access_granted"] = False
+if "upload_completed" not in st.session_state:
+    st.session_state["upload_completed"] = False
 
 st.markdown(
     """
@@ -538,11 +540,8 @@ else:
         
         st.subheader("Tải đề thi và đáp án")
         
-        if "upload_completed" not in st.session_state:
-            st.session_state["upload_completed"] = False
-        
+        # Hiển thị danh sách đề thi hiện có
         exam_list = get_exam_list(service, exams_folder_id)
-        
         if exam_list:
             st.info("Danh sách đề thi hiện có:")
             for exam in exam_list:
@@ -551,6 +550,7 @@ else:
                 subject_name = exam.get("subject_name", "N/A")
                 st.write(f"- {subject_code} - {term} - {subject_name} - {exam['exam_file']} (Mã số bí mật: {exam['secret_code']})")
         
+        # Nút xóa tất cả đề thi
         col1, col2 = st.columns(2)
         with col1:
             if exam_list and st.button("Xóa tất cả đề thi"):
@@ -563,15 +563,21 @@ else:
                 st.success("Đã xóa tất cả đề thi và đáp án.")
                 st.rerun()
         
-        if not st.session_state["upload_completed"]:
-            uploaded_exam_pdf = st.file_uploader("Tải lên đề thi (PDF)", type=["pdf"], key="exam_pdf")
-            uploaded_answer = st.file_uploader("Tải lên đáp án mẫu", type=["docx"], key="answer")
-            subject_code = st.text_input("Mã học phần (ví dụ: IT001):")
-            term = st.text_input("Tên lớn (ví dụ: Kỳ 1 - 2024):")
-            subject_name = st.text_input("Tên môn học (ví dụ: Lập trình Python):")
-            secret_code = st.text_input("Nhập mã số bí mật cho đề thi:", type="password")
-            
-            if uploaded_exam_pdf and uploaded_answer and subject_code and term and subject_name and secret_code:
+        # Form tải lên đề thi mới
+        st.subheader("Tải lên đề thi mới")
+        uploaded_exam_pdf = st.file_uploader("Tải lên đề thi (PDF)", type=["pdf"], key="exam_pdf")
+        uploaded_answer = st.file_uploader("Tải lên đáp án mẫu", type=["docx"], key="answer")
+        subject_code = st.text_input("Mã học phần (ví dụ: IT001):", key="subject_code")
+        term = st.text_input("Tên lớn (ví dụ: Kỳ 1 - 2024):", key="term")
+        subject_name = st.text_input("Tên môn học (ví dụ: Lập trình Python):", key="subject_name")
+        secret_code = st.text_input("Nhập mã số bí mật cho đề thi:", type="password", key="secret_code")
+        
+        if st.button("Tải lên đề thi"):
+            if not uploaded_exam_pdf or not uploaded_answer:
+                st.error("Vui lòng tải lên cả file đề thi (PDF) và đáp án mẫu (DOCX).")
+            elif not subject_code or not term or not subject_name or not secret_code:
+                st.error("Vui lòng nhập đầy đủ Mã học phần, Tên lớn, Tên môn học và Mã số bí mật.")
+            else:
                 exam_pdf_content = uploaded_exam_pdf.read()
                 answer_content = uploaded_answer.read()
                 
@@ -595,12 +601,6 @@ else:
                 update_exam_list(service, exams_folder_id, exam_list)
                 
                 st.success(f"Đề thi {exam_filename} và đáp án đã được lưu trên Google Drive.")
-                st.session_state["upload_completed"] = True
-                st.rerun()
-        else:
-            st.success("Đề thi và đáp án đã được tải lên thành công!")
-            if st.button("Tải lên đề thi mới"):
-                st.session_state["upload_completed"] = False
                 st.rerun()
 
         tab1, tab2, tab3 = st.tabs(["Chấm bài đơn", "Chấm bài hàng loạt", "Xem báo cáo"])
