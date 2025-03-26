@@ -1,3 +1,10 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Mar 27 02:42:11 2025
+
+@author: PC
+"""
+
 import streamlit as st
 import requests
 import docx
