@@ -629,16 +629,8 @@ else:
             if uploaded_essay:
                 exam_list = get_exam_list(service, exams_folder_id)
                 if exam_list:
-                    # Tạo danh sách hiển thị với định dạng: Mã học phần - Tên lớn - Tên môn - dap_an.docx
-                    display_names = [
-                        f"{exam.get('subject_code', 'N/A')} - {exam.get('term', 'N/A')} - {exam.get('subject_name', 'N/A')} - {exam['answer_file']}"
-                        for exam in exam_list
-                    ]
-                    selected_exam_display = st.selectbox("Chọn đáp án mẫu:", display_names, key="select_exam_single")
-                    
-                    # Tìm thông tin đáp án mẫu dựa trên answer_file
-                    selected_answer_file = selected_exam_display.split(" - ")[-1]  # Lấy phần cuối (dap_an_1.docx)
-                    answer_file = next(exam for exam in exam_list if exam["answer_file"] == selected_answer_file)
+                    selected_exam = st.selectbox("Chọn đáp án mẫu:", [exam["answer_file"] for exam in exam_list], key="select_exam_single")
+                    answer_file = next(exam for exam in exam_list if exam["answer_file"] == selected_exam)
                     answer_content = download_file_from_drive(service, answer_file['answer_id'])
                     answer_text = read_docx(answer_content)
                     
@@ -687,6 +679,10 @@ else:
                     st.error("Không tìm thấy đáp án mẫu trên Google Drive. Vui lòng tải lên đáp án trước.")
 
         with tab2:
+            # Khởi tạo biến trạng thái cho việc chấm bài
+            if "start_grading" not in st.session_state:
+                st.session_state["start_grading"] = False
+
             uploaded_essays = st.file_uploader("Tải lên nhiều bài làm tự luận", type=["docx"], accept_multiple_files=True, key="batch_essays")
             
             MAX_FILES = 10
@@ -698,20 +694,19 @@ else:
             if current_files != st.session_state["uploaded_files"]:
                 st.session_state["uploaded_files"] = current_files
                 st.session_state["grading_results"] = []
-                
-                if uploaded_essays:
-                    exam_list = get_exam_list(service, exams_folder_id)
-                    if exam_list:
-                        # Tạo danh sách hiển thị với định dạng: Mã học phần - Tên lớn - Tên môn - dap_an.docx
-                        display_names = [
-                            f"{exam.get('subject_code', 'N/A')} - {exam.get('term', 'N/A')} - {exam.get('subject_name', 'N/A')} - {exam['answer_file']}"
-                            for exam in exam_list
-                        ]
-                        selected_exam_display = st.selectbox("Chọn đáp án mẫu:", display_names, key="select_exam_batch")
+                st.session_state["start_grading"] = False  # Reset trạng thái chấm bài khi danh sách file thay đổi
+            
+            if uploaded_essays:
+                exam_list = get_exam_list(service, exams_folder_id)
+                if exam_list:
+                    selected_exam = st.selectbox("Chọn đáp án mẫu:", [exam["answer_file"] for exam in exam_list], key="select_exam_batch")
+                    
+                    # Nút "Chấm bài" để bắt đầu quá trình chấm
+                    if st.button("Chấm bài"):
+                        st.session_state["start_grading"] = True
+                        st.session_state["grading_results"] = []  # Reset kết quả trước khi chấm
                         
-                        # Tìm thông tin đáp án mẫu dựa trên answer_file
-                        selected_answer_file = selected_exam_display.split(" - ")[-1]  # Lấy phần cuối (dap_an_1.docx)
-                        answer_file = next(exam for exam in exam_list if exam["answer_file"] == selected_answer_file)
+                        answer_file = next(exam for exam in exam_list if exam["answer_file"] == selected_exam)
                         answer_content = download_file_from_drive(service, answer_file['answer_id'])
                         answer_text = read_docx(answer_content)
                         results = []
@@ -754,8 +749,8 @@ else:
                         
                         set_loading_cursor(False)
                         st.session_state["grading_results"] = results
-                    else:
-                        st.error("Không tìm thấy đáp án mẫu trên Google Drive. Vui lòng tải lên đáp án trước.")
+                else:
+                    st.error("Không tìm thấy đáp án mẫu trên Google Drive. Vui lòng tải lên đáp án trước.")
 
             if st.session_state["grading_results"]:
                 df = pd.DataFrame(st.session_state["grading_results"])
@@ -796,24 +791,10 @@ else:
                         mime="application/zip",
                         key="download_all_graded"
                     )
-
-                    # Hiển thị các nút tải riêng lẻ
-                    for file in file_list:
-                        set_loading_cursor(True)
-                        with st.spinner(f"Đang tải file {file['name']}..."):
-                            file_content = download_file_from_drive(service, file['id'])
-                        set_loading_cursor(False)
-                        
-                        if file_content:
-                            st.download_button(
-                                label=f"Tải kết quả: {file['name']}",
-                                data=file_content,
-                                file_name=file['name'],
-                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                                key=f"download_{file['id']}"
-                            )
                 else:
                     st.info("Chưa có kết quả chấm điểm nào được lưu.")
+            elif uploaded_essays and not st.session_state["start_grading"]:
+                st.info("Vui lòng chọn đáp án mẫu và nhấn 'Chấm bài' để bắt đầu chấm điểm.")
             elif uploaded_essays:
                 st.info("Đang xử lý bài làm...")
 
