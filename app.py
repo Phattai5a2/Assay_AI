@@ -152,7 +152,6 @@ def get_or_create_folder(service, folder_name, parent_id=None):
 
 # Tải file lên Google Drive và đặt quyền chia sẻ công khai
 def upload_file_to_drive(service, file_content, file_name, folder_id, update_if_exists=True):
-    # Kiểm tra xem file đã tồn tại chưa
     existing_file = find_file_in_folder(service, file_name, folder_id)
     
     if existing_file and not update_if_exists:
@@ -348,7 +347,9 @@ else:
     if role == "teacher":
         st.subheader("Tải đề thi và đáp án")
         
-        # Kiểm tra xem file đã tồn tại chưa
+        if "upload_completed" not in st.session_state:
+            st.session_state["upload_completed"] = False
+        
         existing_exam = find_file_in_folder(service, "de_thi.pdf", exams_folder_id)
         existing_answer = find_file_in_folder(service, "dap_an.docx", exams_folder_id)
         
@@ -369,21 +370,25 @@ else:
                 st.success("Đã xóa đáp án (dap_an.docx) trên Google Drive.")
                 st.rerun()
         
-        uploaded_exam_pdf = st.file_uploader("Tải lên đề thi (PDF)", type=["pdf"], key="exam_pdf")
-        uploaded_answer = st.file_uploader("Tải lên đáp án mẫu", type=["docx"], key="answer")
-        
-        if uploaded_exam_pdf and uploaded_answer:
-            exam_pdf_content = uploaded_exam_pdf.read()
-            answer_content = uploaded_answer.read()
+        if not st.session_state["upload_completed"]:
+            uploaded_exam_pdf = st.file_uploader("Tải lên đề thi (PDF)", type=["pdf"], key="exam_pdf")
+            uploaded_answer = st.file_uploader("Tải lên đáp án mẫu", type=["docx"], key="answer")
             
-            upload_file_to_drive(service, exam_pdf_content, "de_thi.pdf", exams_folder_id, update_if_exists=True)
-            upload_file_to_drive(service, answer_content, "dap_an.docx", exams_folder_id, update_if_exists=True)
-            
-            st.success("Đề thi (PDF) và đáp án đã được lưu trên Google Drive.")
-            
-            st.session_state["exam_pdf"] = None
-            st.session_state["answer"] = None
-            st.rerun()
+            if uploaded_exam_pdf and uploaded_answer:
+                exam_pdf_content = uploaded_exam_pdf.read()
+                answer_content = uploaded_answer.read()
+                
+                upload_file_to_drive(service, exam_pdf_content, "de_thi.pdf", exams_folder_id, update_if_exists=True)
+                upload_file_to_drive(service, answer_content, "dap_an.docx", exams_folder_id, update_if_exists=True)
+                
+                st.success("Đề thi (PDF) và đáp án đã được lưu trên Google Drive.")
+                st.session_state["upload_completed"] = True
+                st.rerun()
+        else:
+            st.success("Đề thi và đáp án đã được tải lên thành công!")
+            if st.button("Tải lên lại"):
+                st.session_state["upload_completed"] = False
+                st.rerun()
 
         tab1, tab2, tab3 = st.tabs(["Chấm bài đơn", "Chấm bài hàng loạt", "Xem báo cáo"])
 
@@ -559,7 +564,7 @@ else:
             st.session_state["full_name"] = full_name
 
             if st.session_state["mssv"] and st.session_state["full_name"]:
-                tab1, tab2 = st.tabs(["Làm bài thi online", "Nộp bài"])
+                tab1, tab2 = st.tabs([" W bài thi online", "Nộp bài"])
                 
                 with tab1:
                     if not st.session_state["start_exam"]:
