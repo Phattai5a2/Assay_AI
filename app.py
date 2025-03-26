@@ -431,28 +431,78 @@ def load_grading_report(service, folder_id):
         return None
 
 # Giao diện chính
+# Giao diện chính
 if not st.session_state["logged_in"]:
     login()
 else:
-    st.markdown(
-        "<h1 style='text-align: center; font-size: 40px;'>🎓Hệ thống chấm tự luận bằng AI</h1>",
-        unsafe_allow_html=True
-    )
+    # Hiển thị tiêu đề dựa trên vai trò
+    role = st.session_state.get("role", "student")
+    if role == "student":
+        st.markdown(
+            "<h1 style='text-align: center; font-size: 40px;'>Hệ thống thi tự luận trực tuyến NTTU</h1>",
+            unsafe_allow_html=True
+        )
+    else:
+        st.markdown(
+            "<h1 style='text-align: center; font-size: 40px;'>🎓Hệ thống chấm tự luận bằng AI</h1>",
+            unsafe_allow_html=True
+        )
+    
     st.write(f"Xin chào, {st.session_state['user']}!")
     if st.button("Đăng xuất"):
         logout()
     
-    role = st.session_state.get("role", "student")
-    
+    # Phần còn lại của giao diện (admin, teacher, student) giữ nguyên
     if role == "admin":
         st.subheader("Quản lý user")
         
-        # Hiển thị danh sách user hiện có
+        # Hiển thị danh sách user hiện có dưới dạng bảng
         users = load_users(service, root_folder_id)
         if users:
             st.info("Danh sách user hiện có:")
-            for user in users:
-                st.write(f"- {user['username']} (Vai trò: {user['role']})")
+            
+            # Tạo DataFrame từ danh sách user
+            user_data = {
+                "Tên đăng nhập": [user["username"] for user in users],
+                "Vai trò": [user["role"] for user in users]
+            }
+            df = pd.DataFrame(user_data)
+            
+            # Thêm CSS để làm đẹp bảng
+            st.markdown(
+                """
+                <style>
+                .dataframe {
+                    width: 100%;
+                    border-collapse: collapse;
+                    margin: 20px 0;
+                    font-size: 16px;
+                    text-align: left;
+                }
+                .dataframe th {
+                    background-color: #4CAF50;
+                    color: white;
+                    padding: 12px 15px;
+                    text-align: center;
+                    border: 1px solid #ddd;
+                }
+                .dataframe td {
+                    padding: 12px 15px;
+                    border: 1px solid #ddd;
+                }
+                .dataframe tr:nth-child(even) {
+                    background-color: #f2f2f2;
+                }
+                .dataframe tr:hover {
+                    background-color: #ddd;
+                }
+                </style>
+                """,
+                unsafe_allow_html=True
+            )
+            
+            # Hiển thị bảng
+            st.dataframe(df, use_container_width=True)
         else:
             st.error("Không thể tải danh sách user.")
         
