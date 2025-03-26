@@ -87,7 +87,6 @@ def clean_markdown_headers(text):
     cleaned_lines = []
     for line in lines:
         line = line.replace("### ", "").replace("#### ", "")
-        line = line.replace("**", "").replace("** ", "")
         cleaned_lines.append(line)
     return "\n".join(cleaned_lines)
 
@@ -371,11 +370,10 @@ def save_to_csv(data, service, folder_id):
 
 # Hàm chấm điểm bài tự luận
 def grade_essay(student_text, answer_text, student_name=None, mssv=None):
-    prompt = f"""Bạn là giảng viên trường đại học. Hãy chấm bài sau đây.
+    prompt = f"""Bạn là giáo viên. Hãy chấm bài sau đây.
     \n\nĐáp án mẫu:\n{answer_text}
-    \n\nBài làm của sinh viên:\n{student_text}
-    \n\nBài làm có đáp án và bài làm trung 95% thì cho Điểm 10 nhé
-    \n\nHãy đưa ra số điểm (thang 10) và nhận xét chi tiết cho bài làm của sinh viên. Định dạng điểm phải là: Điểm: [số điểm] (ví dụ: Điểm: 8.5)"""
+    \n\nBài làm của học sinh:\n{student_text}
+    \n\nHãy đưa ra số điểm (thang 10) và nhận xét chi tiết. Định dạng điểm phải là: Điểm: [số điểm] (ví dụ: Điểm: 8.5)"""
     
     headers = {
         "Authorization": f"Bearer {API_KEY}",
@@ -578,9 +576,9 @@ else:
         st.subheader("Tải lên đề thi mới")
         uploaded_exam_pdf = st.file_uploader("Tải lên đề thi (PDF)", type=["pdf"], key="exam_pdf")
         uploaded_answer = st.file_uploader("Tải lên đáp án mẫu", type=["docx"], key="answer")
-        subject_code = st.text_input("Mã học phần (ví dụ: 012907749601):", key="subject_code")
-        term = st.text_input("Tên lớn (ví dụ: 24DTH1A):", key="term")
-        subject_name = st.text_input("Tên môn học (ví dụ: Nhận môn KHDL):", key="subject_name")
+        subject_code = st.text_input("Mã học phần (ví dụ: IT001):", key="subject_code")
+        term = st.text_input("Tên lớn (ví dụ: Kỳ 1 - 2024):", key="term")
+        subject_name = st.text_input("Tên môn học (ví dụ: Lập trình Python):", key="subject_name")
         secret_code = st.text_input("Nhập mã số bí mật cho đề thi:", type="password", key="secret_code")
         
         if st.button("Tải lên đề thi"):
@@ -622,7 +620,8 @@ else:
             if uploaded_essay:
                 exam_list = get_exam_list(service, exams_folder_id)
                 if exam_list:
-                    selected_exam = st.selectbox("Chọn đáp án mẫu:", [exam["answer_file"] for exam in exam_list])
+                    # Thêm key để tránh trùng lặp element_id
+                    selected_exam = st.selectbox("Chọn đáp án mẫu:", [exam["answer_file"] for exam in exam_list], key="select_exam_single")
                     answer_file = next(exam for exam in exam_list if exam["answer_file"] == selected_exam)
                     answer_content = download_file_from_drive(service, answer_file['answer_id'])
                     answer_text = read_docx(answer_content)
@@ -687,7 +686,8 @@ else:
                 if uploaded_essays:
                     exam_list = get_exam_list(service, exams_folder_id)
                     if exam_list:
-                        selected_exam = st.selectbox("Chọn đáp án mẫu:", [exam["answer_file"] for exam in exam_list])
+                        # Thêm key để tránh trùng lặp element_id
+                        selected_exam = st.selectbox("Chọn đáp án mẫu:", [exam["answer_file"] for exam in exam_list], key="select_exam_batch")
                         answer_file = next(exam for exam in exam_list if exam["answer_file"] == selected_exam)
                         answer_content = download_file_from_drive(service, answer_file['answer_id'])
                         answer_text = read_docx(answer_content)
