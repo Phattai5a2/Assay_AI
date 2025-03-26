@@ -400,14 +400,28 @@ def grade_essay(student_text, answer_text, student_name=None, mssv=None):
     {student_text}
 
     **Yêu cầu chấm bài:**
-    1. Đưa ra nhận xét chi tiết về bài làm của sinh viên.
-    2. Chấm điểm trên thang 10. Định dạng điểm phải là: **Điểm: [số điểm]** (ví dụ: Điểm: 8.5).
-    3. Cuối cùng, ghi rõ tổng điểm theo định dạng: **Tổng điểm: [số điểm]** (ví dụ: Tổng điểm: 8.5). Dòng này phải nằm ở cuối cùng và không được bỏ sót.
+    1. Đưa ra nhận xét chi tiết về bài làm của sinh viên, bao gồm nhận xét cho từng câu (nếu có).
+    2. Chấm điểm trên thang 10 cho từng câu (nếu có), với định dạng: **Điểm: [số điểm]** (ví dụ: Điểm: 7.0).
+    3. Cuối cùng, ghi rõ tổng điểm của bài làm theo định dạng: **Tổng điểm: [số điểm]** (ví dụ: Tổng điểm: 6.0). 
+       - Dòng này phải là dòng cuối cùng.
+       - Không thêm bất kỳ từ ngữ nào khác trước hoặc sau (ví dụ: không ghi "Tổng điểm ghi là", "Kết luận", v.v.).
 
     **Ví dụ định dạng kết quả:**
-    Nhận xét: Bài làm của sinh viên trình bày rõ ràng, lập luận tốt nhưng còn thiếu một số ý chính.
-    Điểm: 8.5
-    Tổng điểm: 8.5
+    Nhận xét chi tiết về bài làm của sinh viên:
+
+    **Câu 1:**
+    - Sinh viên giải thích đúng khái niệm.
+    - Điểm trừ: Thiếu ví dụ bổ sung.
+    
+    **Câu 2:**
+    - Sinh viên mô tả đúng một phần.
+    - Điểm trừ: Thiếu giải thích chi tiết.
+
+    Điểm:
+    - Câu 1: **7.0**
+    - Câu 2: **5.5**
+
+    **Tổng điểm: 6.0**
 
     Bắt đầu chấm bài:"""
     
@@ -420,7 +434,7 @@ def grade_essay(student_text, answer_text, student_name=None, mssv=None):
         "model": "mistralai/mistral-small-3.1-24b-instruct:free",
         "messages": [{"role": "system", "content": "Bạn là một giảng viên chấm bài chuyên nghiệp."},
                      {"role": "user", "content": prompt}],
-        "temperature": 0.7
+        "temperature": 0.3  # Giảm temperature để AI tuân thủ prompt chặt chẽ hơn
     }
     
     try:
@@ -450,35 +464,35 @@ def grade_essay(student_text, answer_text, student_name=None, mssv=None):
 
 # Hàm trích xuất điểm từ kết quả chấm
 def extract_score(grading_result):
-    # Ưu tiên tìm "Tổng điểm:" trước
-    match = re.search(r"Tổng điểm:\s*(\d+(\.\d+)?)", grading_result, re.IGNORECASE)
-    if match:
-        return float(match.group(1))
+    # Tìm tất cả các lần xuất hiện của "Tổng điểm:" và lấy lần cuối cùng
+    matches = re.findall(r"Tổng điểm:\s*(\d+(\.\d+)?)", grading_result, re.IGNORECASE)
+    if matches:
+        return float(matches[-1][0])  # Lấy điểm số từ lần xuất hiện cuối cùng
     
     # Nếu không tìm thấy "Tổng điểm:", tìm "Điểm:"
-    match = re.search(r"Điểm:\s*(\d+(\.\d+)?)", grading_result, re.IGNORECASE)
-    if match:
-        return float(match.group(1))
+    matches = re.findall(r"Điểm:\s*(\d+(\.\d+)?)", grading_result, re.IGNORECASE)
+    if matches:
+        return float(matches[-1][0])  # Lấy điểm số từ lần xuất hiện cuối cùng của "Điểm:"
     
     # Tìm định dạng: Điểm: 5.5/9 (trích xuất 5.5)
-    match = re.search(r"Điểm:\s*(\d+(\.\d+)?)/\d+", grading_result, re.IGNORECASE)
-    if match:
-        return float(match.group(1))
+    matches = re.findall(r"Điểm:\s*(\d+(\.\d+)?)/\d+", grading_result, re.IGNORECASE)
+    if matches:
+        return float(matches[-1][0])
     
     # Tìm định dạng: Score: 5.5
-    match = re.search(r"Score:\s*(\d+(\.\d+)?)", grading_result, re.IGNORECASE)
-    if match:
-        return float(match.group(1))
+    matches = re.findall(r"Score:\s*(\d+(\.\d+)?)", grading_result, re.IGNORECASE)
+    if matches:
+        return float(matches[-1][0])
     
     # Tìm định dạng: 5.5/10
-    match = re.search(r"(\d+(\.\d+)?)/10", grading_result)
-    if match:
-        return float(match.group(1))
+    matches = re.findall(r"(\d+(\.\d+)?)/10", grading_result)
+    if matches:
+        return float(matches[-1][0])
     
     # Tìm định dạng: Một dòng chỉ chứa số (ví dụ: 5.5)
-    match = re.search(r"^\s*(\d+(\.\d+)?)\s*$", grading_result, re.MULTILINE)
-    if match:
-        return float(match.group(1))
+    matches = re.findall(r"^\s*(\d+(\.\d+)?)\s*$", grading_result, re.MULTILINE)
+    if matches:
+        return float(matches[-1][0])
     
     st.warning(f"Không thể trích xuất điểm từ kết quả: {grading_result}")
     return 0.0
