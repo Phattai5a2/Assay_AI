@@ -7,6 +7,7 @@ import base64
 import io
 import json
 import re
+import zipfile  # Thêm import zipfile để tạo file ZIP
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload, MediaIoBaseDownload
@@ -414,15 +415,23 @@ def grade_essay(student_text, answer_text, student_name=None, mssv=None):
 
 # Hàm trích xuất điểm từ kết quả chấm
 def extract_score(grading_result):
+    # Định dạng: Điểm: 5.5/9 (trích xuất 5.5)
+    match = re.search(r"Điểm:\s*(\d+(\.\d+)?)/\d+", grading_result, re.IGNORECASE)
+    if match:
+        return float(match.group(1))
+    # Định dạng: Điểm: 5.5
     match = re.search(r"Điểm:\s*(\d+(\.\d+)?)", grading_result, re.IGNORECASE)
     if match:
         return float(match.group(1))
+    # Định dạng: Score: 5.5
     match = re.search(r"Score:\s*(\d+(\.\d+)?)", grading_result, re.IGNORECASE)
     if match:
         return float(match.group(1))
+    # Định dạng: 5.5/10
     match = re.search(r"(\d+(\.\d+)?)/10", grading_result)
     if match:
         return float(match.group(1))
+    # Định dạng: Một dòng chỉ chứa số (ví dụ: 5.5)
     match = re.search(r"^\s*(\d+(\.\d+)?)\s*$", grading_result, re.MULTILINE)
     if match:
         return float(match.group(1))
@@ -520,7 +529,7 @@ else:
         st.subheader("Đăng ký user mới")
         new_username = st.text_input("Tên đăng nhập mới:")
         new_password = st.text_input("Mật khẩu mới:", type="password")
-        new_role = st.selectbox("Vai trò:", ["admin", "teacher", "student"])
+        new_role = st.selectbox("Vai trò:", ["admin", "teacher "student"])
         
         if st.button("Đăng ký"):
             if not new_username or not new_password:
@@ -620,7 +629,6 @@ else:
             if uploaded_essay:
                 exam_list = get_exam_list(service, exams_folder_id)
                 if exam_list:
-                    # Thêm key để tránh trùng lặp element_id
                     selected_exam = st.selectbox("Chọn đáp án mẫu:", [exam["answer_file"] for exam in exam_list], key="select_exam_single")
                     answer_file = next(exam for exam in exam_list if exam["answer_file"] == selected_exam)
                     answer_content = download_file_from_drive(service, answer_file['answer_id'])
@@ -686,7 +694,6 @@ else:
                 if uploaded_essays:
                     exam_list = get_exam_list(service, exams_folder_id)
                     if exam_list:
-                        # Thêm key để tránh trùng lặp element_id
                         selected_exam = st.selectbox("Chọn đáp án mẫu:", [exam["answer_file"] for exam in exam_list], key="select_exam_batch")
                         answer_file = next(exam for exam in exam_list if exam["answer_file"] == selected_exam)
                         answer_content = download_file_from_drive(service, answer_file['answer_id'])
@@ -754,19 +761,41 @@ else:
                 response = service.files().list(q=f"'{graded_essays_folder_id}' in parents and trashed=false", spaces='drive').execute()
                 file_list = response.get('files', [])
                 if file_list:
+                    # Tạo file ZIP chứa tất cả các file kết quả
+                    zip_buffer = io.BytesIO()
+                    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                        for file in file_list:
+                            set_loading_cursor(True)
+                            with st.spinner(f"Đang xử lý file {file['name']}..."):
+                                file_content = download_file_from_drive(service, file['id'])
+                            set_loading_cursor(False)
+                            if file_content:
+                                zip_file.writestr(file['name'], file_content)
+                    
+                    zip_buffer.seek(0)
+                    st.download_button(
+                        label="Tải tất cả kết quả (ZIP)",
+                        data=zip_buffer,
+                        file_name="all_graded_essays.zip",
+                        mime="application/zip",
+                        key="download_all_graded"
+                    )
+
+                    # Hiển thị các nút tải riêng lẻ
                     for file in file_list:
                         set_loading_cursor(True)
                         with st.spinner(f"Đang tải file {file['name']}..."):
                             file_content = download_file_from_drive(service, file['id'])
                         set_loading_cursor(False)
                         
-                        st.download_button(
-                            label=f"Tải kết quả: {file['name']}",
-                            data=file_content,
-                            file_name=file['name'],
-                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                            key=f"download_{file['id']}"
-                        )
+                        if file_content:
+                            st.download_button(
+                                label=f"Tải kết quả: {file['name']}",
+                                data=file_content,
+                                file_name=file['name'],
+                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                key=f"download_{file['id']}"
+                            )
                 else:
                     st.info("Chưa có kết quả chấm điểm nào được lưu.")
             elif uploaded_essays:
