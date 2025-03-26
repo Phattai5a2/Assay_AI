@@ -177,56 +177,87 @@ def upload_file_to_drive(service, file_content, file_name, folder_id, update_if_
 
 # Tải file từ Google Drive
 def download_file_from_drive(service, file_id):
-    request = service.files().get_media(fileId=file_id)
-    file_content = io.BytesIO()
-    downloader = MediaIoBaseDownload(file_content, request)
-    done = False
-    while not done:
-        status, done = downloader.next_chunk()
-    file_content.seek(0)
-    return file_content.read()
+    try:
+        request = service.files().get_media(fileId=file_id)
+        file_content = io.BytesIO()
+        downloader = MediaIoBaseDownload(file_content, request)
+        done = False
+        while not done:
+            status, done = downloader.next_chunk()
+        file_content.seek(0)
+        return file_content.read()
+    except Exception as e:
+        st.error(f"Lỗi khi tải file từ Google Drive: {str(e)}")
+        return None
 
 # Tìm file trên Google Drive
 def find_file_in_folder(service, file_name, folder_id):
-    query = f"name='{file_name}' and '{folder_id}' in parents and trashed=false"
-    response = service.files().list(q=query, spaces='drive').execute()
-    files = response.get('files', [])
-    return files[0] if files else None
+    try:
+        query = f"name='{file_name}' and '{folder_id}' in parents and trashed=false"
+        response = service.files().list(q=query, spaces='drive').execute()
+        files = response.get('files', [])
+        return files[0] if files else None
+    except Exception as e:
+        st.error(f"Lỗi khi tìm file trên Google Drive: {str(e)}")
+        return None
 
 # Lấy danh sách user từ file users.json
 def load_users(service, root_folder_id):
-    users_file = find_file_in_folder(service, "users.json", root_folder_id)
-    if users_file:
-        content = download_file_from_drive(service, users_file['id']).decode('utf-8')
-        return json.loads(content)
-    else:
-        # Nếu chưa có file, tạo file với user admin mặc định
-        default_users = [
-            {"username": "admin", "password": "admin123", "role": "admin"},
-            {"username": "teacher", "password": "1", "role": "teacher"},
-            {"username": "student", "password": "1", "role": "student"},
-            {"username": "teacher2", "password": "1", "role": "teacher"}
-        ]
-        save_users(service, root_folder_id, default_users)
-        return default_users
+    try:
+        users_file = find_file_in_folder(service, "users.json", root_folder_id)
+        if users_file:
+            content = download_file_from_drive(service, users_file['id'])
+            if content:
+                return json.loads(content.decode('utf-8'))
+            else:
+                st.error("Không thể đọc nội dung file users.json.")
+                return []
+        else:
+            # Nếu chưa có file, tạo file với user admin mặc định
+            default_users = [
+                {"username": "admin", "password": "admin123", "role": "admin"},
+                {"username": "teacher", "password": "1", "role": "teacher"},
+                {"username": "student", "password": "1", "role": "student"},
+                {"username": "teacher2", "password": "1", "role": "teacher"}
+            ]
+            save_users(service, root_folder_id, default_users)
+            st.info("Đã tạo file users.json với user admin mặc định (admin/admin123).")
+            return default_users
+    except Exception as e:
+        st.error(f"Lỗi khi tải danh sách user: {str(e)}")
+        return []
 
 # Lưu danh sách user vào file users.json
 def save_users(service, root_folder_id, users):
-    json_content = json.dumps(users, ensure_ascii=False, indent=4)
-    upload_file_to_drive(service, json_content.encode('utf-8'), "users.json", root_folder_id, update_if_exists=True)
+    try:
+        json_content = json.dumps(users, ensure_ascii=False, indent=4)
+        upload_file_to_drive(service, json_content.encode('utf-8'), "users.json", root_folder_id, update_if_exists=True)
+    except Exception as e:
+        st.error(f"Lỗi khi lưu danh sách user: {str(e)}")
 
 # Lấy danh sách đề thi từ thư mục của giảng viên
 def get_exam_list(service, exams_folder_id):
-    exam_secrets_file = find_file_in_folder(service, "exam_secrets.json", exams_folder_id)
-    if exam_secrets_file:
-        content = download_file_from_drive(service, exam_secrets_file['id']).decode('utf-8')
-        return json.loads(content)
-    return []
+    try:
+        exam_secrets_file = find_file_in_folder(service, "exam_secrets.json", exams_folder_id)
+        if exam_secrets_file:
+            content = download_file_from_drive(service, exam_secrets_file['id'])
+            if content:
+                return json.loads(content.decode('utf-8'))
+            else:
+                st.error("Không thể đọc nội dung file exam_secrets.json.")
+                return []
+        return []
+    except Exception as e:
+        st.error(f"Lỗi khi tải danh sách đề thi: {str(e)}")
+        return []
 
 # Cập nhật danh sách đề thi vào file exam_secrets.json
 def update_exam_list(service, exams_folder_id, exam_list):
-    json_content = json.dumps(exam_list, ensure_ascii=False, indent=4)
-    upload_file_to_drive(service, json_content.encode('utf-8'), "exam_secrets.json", exams_folder_id, update_if_exists=True)
+    try:
+        json_content = json.dumps(exam_list, ensure_ascii=False, indent=4)
+        upload_file_to_drive(service, json_content.encode('utf-8'), "exam_secrets.json", exams_folder_id, update_if_exists=True)
+    except Exception as e:
+        st.error(f"Lỗi khi lưu danh sách đề thi: {str(e)}")
 
 # Khởi tạo Google Drive
 try:
@@ -237,6 +268,9 @@ except Exception as e:
 
 # Tạo thư mục gốc
 root_folder_id = get_or_create_folder(service, "ExamSystem")
+if not root_folder_id:
+    st.error("Không thể tạo hoặc truy cập thư mục ExamSystem trên Google Drive.")
+    st.stop()
 
 # Tạo thư mục riêng cho từng giảng viên
 def initialize_teacher_folders(service, username):
@@ -265,15 +299,24 @@ def login():
     user = st.text_input("Tên đăng nhập:")
     password = st.text_input("Mật khẩu:", type="password")
     if st.button("Đăng nhập", icon=":material/login:"):
+        if not user or not password:
+            st.error("Vui lòng nhập đầy đủ tên đăng nhập và mật khẩu.")
+            return
+        
         users = load_users(service, root_folder_id)
+        if not users:
+            st.error("Không thể tải danh sách user. Vui lòng kiểm tra kết nối Google Drive.")
+            return
+        
         user_data = next((u for u in users if u["username"] == user and u["password"] == password), None)
         if user_data:
             st.session_state["logged_in"] = True
             st.session_state["user"] = user
             st.session_state["role"] = user_data["role"]
             st.success(f"Xin chào, {user}!")
+            st.rerun()
         else:
-            st.error("Sai tài khoản hoặc mật khẩu!")
+            st.error("Sai tài khoản hoặc mật khẩu! Vui lòng kiểm tra lại.")
 
 # Hàm đăng xuất
 def logout():
@@ -282,28 +325,36 @@ def logout():
 
 # Hàm đọc file Word
 def read_docx(file_content):
-    doc = docx.Document(io.BytesIO(file_content))
-    text = "\n".join([para.text for para in doc.paragraphs])
-    return text
+    try:
+        doc = docx.Document(io.BytesIO(file_content))
+        text = "\n".join([para.text for para in doc.paragraphs])
+        return text
+    except Exception as e:
+        st.error(f"Lỗi khi đọc file Word: {str(e)}")
+        return ""
 
 # Hàm lưu vào CSV trên Google Drive với mã hóa UTF-8-SIG
 def save_to_csv(data, service, folder_id):
-    df = pd.DataFrame(data)
-    csv_buffer = io.StringIO()
-    df.to_csv(csv_buffer, index=False, encoding='utf-8-sig')
-    
-    existing_file = find_file_in_folder(service, "grading_report.csv", folder_id)
-    if existing_file:
-        existing_content = download_file_from_drive(service, existing_file['id']).decode('utf-8-sig')
-        existing_df = pd.read_csv(io.StringIO(existing_content), encoding='utf-8-sig')
-        df = pd.concat([existing_df, df], ignore_index=True)
+    try:
+        df = pd.DataFrame(data)
+        csv_buffer = io.StringIO()
         df.to_csv(csv_buffer, index=False, encoding='utf-8-sig')
-        file_metadata = {'name': "grading_report.csv"}
-        media = MediaIoBaseUpload(io.BytesIO(csv_buffer.getvalue().encode('utf-8')), mimetype='text/csv')
-        service.files().update(fileId=existing_file['id'], body=file_metadata, media_body=media).execute()
-    else:
-        df.to_csv(csv_buffer, index=False, encoding='utf-8-sig')
-        upload_file_to_drive(service, csv_buffer.getvalue().encode('utf-8'), "grading_report.csv", folder_id)
+        
+        existing_file = find_file_in_folder(service, "grading_report.csv", folder_id)
+        if existing_file:
+            existing_content = download_file_from_drive(service, existing_file['id'])
+            if existing_content:
+                existing_df = pd.read_csv(io.StringIO(existing_content.decode('utf-8-sig')), encoding='utf-8-sig')
+                df = pd.concat([existing_df, df], ignore_index=True)
+                df.to_csv(csv_buffer, index=False, encoding='utf-8-sig')
+                file_metadata = {'name': "grading_report.csv"}
+                media = MediaIoBaseUpload(io.BytesIO(csv_buffer.getvalue().encode('utf-8')), mimetype='text/csv')
+                service.files().update(fileId=existing_file['id'], body=file_metadata, media_body=media).execute()
+        else:
+            df.to_csv(csv_buffer, index=False, encoding='utf-8-sig')
+            upload_file_to_drive(service, csv_buffer.getvalue().encode('utf-8'), "grading_report.csv", folder_id)
+    except Exception as e:
+        st.error(f"Lỗi khi lưu file CSV: {str(e)}")
 
 # Hàm chấm điểm bài tự luận
 def grade_essay(student_text, answer_text, student_name=None, mssv=None):
@@ -368,11 +419,16 @@ def extract_score(grading_result):
 
 # Hàm đọc báo cáo từ Google Drive với mã hóa UTF-8-SIG
 def load_grading_report(service, folder_id):
-    file = find_file_in_folder(service, "grading_report.csv", folder_id)
-    if file:
-        content = download_file_from_drive(service, file['id']).decode('utf-8-sig')
-        return pd.read_csv(io.StringIO(content), encoding='utf-8-sig')
-    return None
+    try:
+        file = find_file_in_folder(service, "grading_report.csv", folder_id)
+        if file:
+            content = download_file_from_drive(service, file['id'])
+            if content:
+                return pd.read_csv(io.StringIO(content.decode('utf-8-sig')), encoding='utf-8-sig')
+        return None
+    except Exception as e:
+        st.error(f"Lỗi khi đọc báo cáo: {str(e)}")
+        return None
 
 # Giao diện chính
 if not st.session_state["logged_in"]:
@@ -393,9 +449,12 @@ else:
         
         # Hiển thị danh sách user hiện có
         users = load_users(service, root_folder_id)
-        st.info("Danh sách user hiện có:")
-        for user in users:
-            st.write(f"- {user['username']} (Vai trò: {user['role']})")
+        if users:
+            st.info("Danh sách user hiện có:")
+            for user in users:
+                st.write(f"- {user['username']} (Vai trò: {user['role']})")
+        else:
+            st.error("Không thể tải danh sách user.")
         
         # Form đăng ký user mới
         st.subheader("Đăng ký user mới")
