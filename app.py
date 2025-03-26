@@ -7,7 +7,7 @@ import base64
 import io
 import json
 import re
-import zipfile  # Thêm import zipfile để tạo file ZIP
+import zipfile
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload, MediaIoBaseDownload
@@ -529,7 +529,7 @@ else:
         st.subheader("Đăng ký user mới")
         new_username = st.text_input("Tên đăng nhập mới:")
         new_password = st.text_input("Mật khẩu mới:", type="password")
-        new_role = st.selectbox("Vai trò:", ["admin", "teacher "student"])
+        new_role = st.selectbox("Vai trò:", ["admin", "teacher", "student"])
         
         if st.button("Đăng ký"):
             if not new_username or not new_password:
@@ -629,8 +629,16 @@ else:
             if uploaded_essay:
                 exam_list = get_exam_list(service, exams_folder_id)
                 if exam_list:
-                    selected_exam = st.selectbox("Chọn đáp án mẫu:", [exam["answer_file"] for exam in exam_list], key="select_exam_single")
-                    answer_file = next(exam for exam in exam_list if exam["answer_file"] == selected_exam)
+                    # Tạo danh sách hiển thị với định dạng: Mã học phần - Tên lớn - Tên môn - dap_an.docx
+                    display_names = [
+                        f"{exam.get('subject_code', 'N/A')} - {exam.get('term', 'N/A')} - {exam.get('subject_name', 'N/A')} - {exam['answer_file']}"
+                        for exam in exam_list
+                    ]
+                    selected_exam_display = st.selectbox("Chọn đáp án mẫu:", display_names, key="select_exam_single")
+                    
+                    # Tìm thông tin đáp án mẫu dựa trên answer_file
+                    selected_answer_file = selected_exam_display.split(" - ")[-1]  # Lấy phần cuối (dap_an_1.docx)
+                    answer_file = next(exam for exam in exam_list if exam["answer_file"] == selected_answer_file)
                     answer_content = download_file_from_drive(service, answer_file['answer_id'])
                     answer_text = read_docx(answer_content)
                     
@@ -694,8 +702,16 @@ else:
                 if uploaded_essays:
                     exam_list = get_exam_list(service, exams_folder_id)
                     if exam_list:
-                        selected_exam = st.selectbox("Chọn đáp án mẫu:", [exam["answer_file"] for exam in exam_list], key="select_exam_batch")
-                        answer_file = next(exam for exam in exam_list if exam["answer_file"] == selected_exam)
+                        # Tạo danh sách hiển thị với định dạng: Mã học phần - Tên lớn - Tên môn - dap_an.docx
+                        display_names = [
+                            f"{exam.get('subject_code', 'N/A')} - {exam.get('term', 'N/A')} - {exam.get('subject_name', 'N/A')} - {exam['answer_file']}"
+                            for exam in exam_list
+                        ]
+                        selected_exam_display = st.selectbox("Chọn đáp án mẫu:", display_names, key="select_exam_batch")
+                        
+                        # Tìm thông tin đáp án mẫu dựa trên answer_file
+                        selected_answer_file = selected_exam_display.split(" - ")[-1]  # Lấy phần cuối (dap_an_1.docx)
+                        answer_file = next(exam for exam in exam_list if exam["answer_file"] == selected_answer_file)
                         answer_content = download_file_from_drive(service, answer_file['answer_id'])
                         answer_text = read_docx(answer_content)
                         results = []
