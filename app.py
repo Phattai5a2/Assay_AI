@@ -688,9 +688,14 @@ else:
             if uploaded_essay:
                 exam_list = get_exam_list(service, exams_folder_id)
                 if exam_list:
-                    selected_exam = st.selectbox("Chọn đáp án mẫu:", [exam["answer_file"] for exam in exam_list], key="select_exam_single")
-                    answer_file = next(exam for exam in exam_list if exam["answer_file"] == selected_exam)
-                    answer_content = download_file_from_drive(service, answer_file['answer_id'])
+                    # Tạo danh sách các chuỗi hiển thị cho đáp án mẫu
+                    display_names = [f"{exam['subject_code']} - {exam['term']} - {exam['subject_name']}" for exam in exam_list]
+                    selected_display_name = st.selectbox("Chọn đáp án mẫu:", display_names, key="select_exam_single")
+                    
+                    # Tìm exam tương ứng với display_name đã chọn
+                    selected_exam = next(exam for exam in exam_list 
+                                       if f"{exam['subject_code']} - {exam['term']} - {exam['subject_name']}" == selected_display_name)
+                    answer_content = download_file_from_drive(service, selected_exam['answer_id'])
                     answer_text = read_docx(answer_content)
                     
                     filename = uploaded_essay.name
@@ -758,7 +763,9 @@ else:
             if uploaded_essays:
                 exam_list = get_exam_list(service, exams_folder_id)
                 if exam_list:
-                    selected_exam = st.selectbox("Chọn đáp án mẫu:", [exam["answer_file"] for exam in exam_list], key="select_exam_batch")
+                    # Tạo danh sách các chuỗi hiển thị cho đáp án mẫu
+                    display_names = [f"{exam['subject_code']} - {exam['term']} - {exam['subject_name']}" for exam in exam_list]
+                    selected_display_name = st.selectbox("Chọn đáp án mẫu:", display_names, key="select_exam_batch")
                     
                     # Nút "Chấm bài" để bắt đầu quá trình chấm
                     if st.button("Chấm bài"):
@@ -771,8 +778,10 @@ else:
                             clear_folder(service, graded_essays_folder_id)
                         set_loading_cursor(False)
                         
-                        answer_file = next(exam for exam in exam_list if exam["answer_file"] == selected_exam)
-                        answer_content = download_file_from_drive(service, answer_file['answer_id'])
+                        # Tìm exam tương ứng với display_name đã chọn
+                        selected_exam = next(exam for exam in exam_list 
+                                           if f"{exam['subject_code']} - {exam['term']} - {exam['subject_name']}" == selected_display_name)
+                        answer_content = download_file_from_drive(service, selected_exam['answer_id'])
                         answer_text = read_docx(answer_content)
                         results = []
                         
