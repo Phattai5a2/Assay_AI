@@ -86,7 +86,7 @@ def clean_markdown_headers(text):
     lines = text.split("\n")
     cleaned_lines = []
     for line in lines:
-        line = line.replace("###", "").replace("####", "")
+        line = line.replace("### ", "").replace("#### ", "")
         line = line.replace("**", "").replace("** ", "")
         cleaned_lines.append(line)
     return "\n".join(cleaned_lines)
@@ -371,11 +371,11 @@ def save_to_csv(data, service, folder_id):
 
 # Hàm chấm điểm bài tự luận
 def grade_essay(student_text, answer_text, student_name=None, mssv=None):
-    prompt = f"""Bạn là giảng viên đại học. Hãy chấm bài sau đây.
+    prompt = f"""Bạn là giảng viên trường đại học. Hãy chấm bài sau đây.
     \n\nĐáp án mẫu:\n{answer_text}
     \n\nBài làm của sinh viên:\n{student_text}
     \n\nBài làm có đáp án và bài làm trung 95% thì cho Điểm 10 nhé
-    \n\nHãy đưa ra số điểm (thang 10) và nhận xét chi tiết. Định dạng điểm phải là: Điểm: [số điểm] (ví dụ: Điểm: 8.5)"""
+    \n\nHãy đưa ra số điểm (thang 10) và nhận xét chi tiết cho bài làm của sinh viên. Định dạng điểm phải là: Điểm: [số điểm] (ví dụ: Điểm: 8.5)"""
     
     headers = {
         "Authorization": f"Bearer {API_KEY}",
