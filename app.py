@@ -401,7 +401,7 @@ def grade_essay(student_text, answer_text, student_name=None, mssv=None):
 
     **Yêu cầu chấm bài:**
     1. Đưa ra nhận xét chi tiết về bài làm của sinh viên, bao gồm nhận xét cho từng câu (nếu có).
-    2. Chấm điểm trên thang 10, điểm từng câu phải nhỏ hơn hay bằng điểm trong từng câu ghi trong đáp án với định dạng: **Điểm: [số điểm]** (ví dụ: Điểm: 5.0).
+    2. Chấm điểm trên thang điểm 10 (Không quá điểm 10), điểm từng câu phải nhỏ hơn hay bằng điểm trong từng câu ghi trong đáp án với định dạng: **Điểm: [số điểm]** (ví dụ: Điểm: 5.0).
     3. Cuối cùng, ghi rõ tổng điểm của bài làm theo định dạng: **Tổng điểm: [số điểm]** (ví dụ: Tổng điểm: 6.0). 
        - Dòng này phải là dòng cuối cùng.
        - Không thêm bất kỳ từ ngữ nào khác trước hoặc sau (ví dụ: không ghi "Tổng điểm ghi là", "Kết luận", v.v.).
@@ -418,10 +418,10 @@ def grade_essay(student_text, answer_text, student_name=None, mssv=None):
     - Điểm trừ: Thiếu giải thích chi tiết.
 
     Điểm:
-    - Câu 1: **7.0**
-    - Câu 2: **5.5**
+    - Câu 1: **3.0**
+    - Câu 2: **2.5**
 
-    **Tổng điểm: 6.0**
+    **Tổng điểm: 6.5**
 
     Bắt đầu chấm bài:"""
     
