@@ -218,7 +218,8 @@ def load_users(service, root_folder_id):
                 {"username": "admin", "password": "admin123", "role": "admin"},
                 {"username": "teacher", "password": "1", "role": "teacher"},
                 {"username": "student", "password": "1", "role": "student"},
-                {"username": "teacher2", "password": "1", "role": "teacher"}
+                {"username": "teacher2", "password": "1", "role": "teacher"},
+                {"username": "tai", "password": "1", "role": "teacher"}
             ]
             save_users(service, root_folder_id, default_users)
             st.info("Đã tạo file users.json với user admin mặc định (admin/admin123).")
@@ -431,7 +432,6 @@ def load_grading_report(service, folder_id):
         return None
 
 # Giao diện chính
-# Giao diện chính
 if not st.session_state["logged_in"]:
     login()
 else:
@@ -452,7 +452,6 @@ else:
     if st.button("Đăng xuất"):
         logout()
     
-    # Phần còn lại của giao diện (admin, teacher, student) giữ nguyên
     if role == "admin":
         st.subheader("Quản lý user")
         
@@ -547,7 +546,10 @@ else:
         if exam_list:
             st.info("Danh sách đề thi hiện có:")
             for exam in exam_list:
-                st.write(f"- {exam['exam_file']} (Mã số bí mật: {exam['secret_code']})")
+                subject_code = exam.get("subject_code", "N/A")
+                term = exam.get("term", "N/A")
+                subject_name = exam.get("subject_name", "N/A")
+                st.write(f"- {subject_code} - {term} - {subject_name} - {exam['exam_file']} (Mã số bí mật: {exam['secret_code']})")
         
         col1, col2 = st.columns(2)
         with col1:
@@ -564,9 +566,12 @@ else:
         if not st.session_state["upload_completed"]:
             uploaded_exam_pdf = st.file_uploader("Tải lên đề thi (PDF)", type=["pdf"], key="exam_pdf")
             uploaded_answer = st.file_uploader("Tải lên đáp án mẫu", type=["docx"], key="answer")
+            subject_code = st.text_input("Mã học phần (ví dụ: IT001):")
+            term = st.text_input("Tên lớn (ví dụ: Kỳ 1 - 2024):")
+            subject_name = st.text_input("Tên môn học (ví dụ: Lập trình Python):")
             secret_code = st.text_input("Nhập mã số bí mật cho đề thi:", type="password")
             
-            if uploaded_exam_pdf and uploaded_answer and secret_code:
+            if uploaded_exam_pdf and uploaded_answer and subject_code and term and subject_name and secret_code:
                 exam_pdf_content = uploaded_exam_pdf.read()
                 answer_content = uploaded_answer.read()
                 
@@ -582,7 +587,10 @@ else:
                     "exam_id": exam_file_id,
                     "answer_file": answer_filename,
                     "answer_id": answer_file_id,
-                    "secret_code": secret_code
+                    "secret_code": secret_code,
+                    "subject_code": subject_code,
+                    "term": term,
+                    "subject_name": subject_name
                 })
                 update_exam_list(service, exams_folder_id, exam_list)
                 
@@ -777,8 +785,12 @@ else:
             if exams_folder:
                 exam_list = get_exam_list(service, exams_folder['id'])
                 for exam in exam_list:
+                    subject_code = exam.get("subject_code", "N/A")
+                    term = exam.get("term", "N/A")
+                    subject_name = exam.get("subject_name", "N/A")
+                    display_name = f"{subject_code} - {term} - {subject_name} - {username}"
                     all_exams.append({
-                        "display_name": f"{username} - {exam['exam_file']}",
+                        "display_name": display_name,
                         "exam_id": exam['exam_id'],
                         "secret_code": exam['secret_code']
                     })
@@ -790,7 +802,7 @@ else:
             st.session_state["full_name"] = full_name
             
             if st.session_state["mssv"] and st.session_state["full_name"]:
-                # Hiển thị danh sách đề thi
+                # Hiển thị danh sách đề thi với định dạng mới
                 selected_exam = st.selectbox("Chọn đề thi:", [exam["display_name"] for exam in all_exams])
                 secret_code = st.text_input("Nhập mã số bí mật:", type="password")
                 
@@ -859,7 +871,7 @@ else:
                                 doc_buffer.seek(0)
                                 
                                 # Lưu bài làm vào thư mục essays của giảng viên tương ứng
-                                teacher_username = selected_exam.split(" - ")[0]
+                                teacher_username = selected_exam.split(" - ")[-1]
                                 teacher_folder = get_or_create_folder(service, f"teacher_{teacher_username}", root_folder_id)
                                 essays_folder = get_or_create_folder(service, "essays", teacher_folder)
                                 upload_file_to_drive(service, doc_buffer.getvalue(), filename, essays_folder)
@@ -874,7 +886,7 @@ else:
                         if uploaded_essay:
                             filename = f"{st.session_state['mssv']}_{st.session_state['full_name']}.docx"
                             essay_content = uploaded_essay.read()
-                            teacher_username = selected_exam.split(" - ")[0]
+                            teacher_username = selected_exam.split(" - ")[-1]
                             teacher_folder = get_or_create_folder(service, f"teacher_{teacher_username}", root_folder_id)
                             essays_folder = get_or_create_folder(service, "essays", teacher_folder)
                             upload_file_to_drive(service, essay_content, filename, essays_folder)
