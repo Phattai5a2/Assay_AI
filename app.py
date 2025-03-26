@@ -32,6 +32,8 @@ if "mssv" not in st.session_state:
     st.session_state["mssv"] = ""
 if "full_name" not in st.session_state:
     st.session_state["full_name"] = ""
+if "exam_access_granted" not in st.session_state:
+    st.session_state["exam_access_granted"] = False
 
 st.markdown(
     """
@@ -51,12 +53,6 @@ try:
 except KeyError:
     st.error("Không tìm thấy API key của OpenRouter trong Secrets. Vui lòng thêm 'openrouter.api_key' vào Secrets trên Streamlit Cloud.")
     st.stop()
-
-# Danh sách user giả lập
-USERS = {
-    "teacher": "1",
-    "student": "1"
-}
 
 # Hàm thay đổi con trỏ chuột
 def set_loading_cursor(status):
@@ -197,6 +193,41 @@ def find_file_in_folder(service, file_name, folder_id):
     files = response.get('files', [])
     return files[0] if files else None
 
+# Lấy danh sách user từ file users.json
+def load_users(service, root_folder_id):
+    users_file = find_file_in_folder(service, "users.json", root_folder_id)
+    if users_file:
+        content = download_file_from_drive(service, users_file['id']).decode('utf-8')
+        return json.loads(content)
+    else:
+        # Nếu chưa có file, tạo file với user admin mặc định
+        default_users = [
+            {"username": "admin", "password": "admin123", "role": "admin"},
+            {"username": "teacher", "password": "1", "role": "teacher"},
+            {"username": "student", "password": "1", "role": "student"},
+            {"username": "teacher2", "password": "1", "role": "teacher"}
+        ]
+        save_users(service, root_folder_id, default_users)
+        return default_users
+
+# Lưu danh sách user vào file users.json
+def save_users(service, root_folder_id, users):
+    json_content = json.dumps(users, ensure_ascii=False, indent=4)
+    upload_file_to_drive(service, json_content.encode('utf-8'), "users.json", root_folder_id, update_if_exists=True)
+
+# Lấy danh sách đề thi từ thư mục của giảng viên
+def get_exam_list(service, exams_folder_id):
+    exam_secrets_file = find_file_in_folder(service, "exam_secrets.json", exams_folder_id)
+    if exam_secrets_file:
+        content = download_file_from_drive(service, exam_secrets_file['id']).decode('utf-8')
+        return json.loads(content)
+    return []
+
+# Cập nhật danh sách đề thi vào file exam_secrets.json
+def update_exam_list(service, exams_folder_id, exam_list):
+    json_content = json.dumps(exam_list, ensure_ascii=False, indent=4)
+    upload_file_to_drive(service, json_content.encode('utf-8'), "exam_secrets.json", exams_folder_id, update_if_exists=True)
+
 # Khởi tạo Google Drive
 try:
     service = authenticate_google_drive()
@@ -204,12 +235,23 @@ except Exception as e:
     st.error(f"Lỗi khi khởi tạo Google Drive: {str(e)}")
     st.stop()
 
-# Tạo các thư mục trên Google Drive
+# Tạo thư mục gốc
 root_folder_id = get_or_create_folder(service, "ExamSystem")
-exams_folder_id = get_or_create_folder(service, "exams", root_folder_id)
-essays_folder_id = get_or_create_folder(service, "essays", root_folder_id)
-graded_essays_folder_id = get_or_create_folder(service, "graded_essays", root_folder_id)
-reports_folder_id = get_or_create_folder(service, "reports", root_folder_id)
+
+# Tạo thư mục riêng cho từng giảng viên
+def initialize_teacher_folders(service, username):
+    teacher_folder = get_or_create_folder(service, f"teacher_{username}", root_folder_id)
+    exams_folder = get_or_create_folder(service, "exams", teacher_folder)
+    essays_folder = get_or_create_folder(service, "essays", teacher_folder)
+    graded_essays_folder = get_or_create_folder(service, "graded_essays", teacher_folder)
+    reports_folder = get_or_create_folder(service, "reports", teacher_folder)
+    return {
+        "teacher_folder_id": teacher_folder,
+        "exams_folder_id": exams_folder,
+        "essays_folder_id": essays_folder,
+        "graded_essays_folder_id": graded_essays_folder,
+        "reports_folder_id": reports_folder
+    }
 
 # Hàm kiểm tra đăng nhập
 def login():
@@ -223,10 +265,12 @@ def login():
     user = st.text_input("Tên đăng nhập:")
     password = st.text_input("Mật khẩu:", type="password")
     if st.button("Đăng nhập", icon=":material/login:"):
-        if user in USERS and USERS[user] == password:
+        users = load_users(service, root_folder_id)
+        user_data = next((u for u in users if u["username"] == user and u["password"] == password), None)
+        if user_data:
             st.session_state["logged_in"] = True
             st.session_state["user"] = user
-            st.session_state["role"] = "teacher" if user == "teacher" else "student"
+            st.session_state["role"] = user_data["role"]
             st.success(f"Xin chào, {user}!")
         else:
             st.error("Sai tài khoản hoặc mật khẩu!")
@@ -344,49 +388,101 @@ else:
     
     role = st.session_state.get("role", "student")
     
-    if role == "teacher":
+    if role == "admin":
+        st.subheader("Quản lý user")
+        
+        # Hiển thị danh sách user hiện có
+        users = load_users(service, root_folder_id)
+        st.info("Danh sách user hiện có:")
+        for user in users:
+            st.write(f"- {user['username']} (Vai trò: {user['role']})")
+        
+        # Form đăng ký user mới
+        st.subheader("Đăng ký user mới")
+        new_username = st.text_input("Tên đăng nhập mới:")
+        new_password = st.text_input("Mật khẩu mới:", type="password")
+        new_role = st.selectbox("Vai trò:", ["admin", "teacher", "student"])
+        
+        if st.button("Đăng ký"):
+            if not new_username or not new_password:
+                st.error("Vui lòng nhập đầy đủ tên đăng nhập và mật khẩu.")
+            else:
+                # Kiểm tra username đã tồn tại chưa
+                if any(user["username"] == new_username for user in users):
+                    st.error("Tên đăng nhập đã tồn tại. Vui lòng chọn tên khác.")
+                else:
+                    # Thêm user mới
+                    users.append({
+                        "username": new_username,
+                        "password": new_password,
+                        "role": new_role
+                    })
+                    save_users(service, root_folder_id, users)
+                    st.success(f"Đã đăng ký user {new_username} với vai trò {new_role}.")
+                    st.rerun()
+    
+    elif role == "teacher":
+        teacher_folders = initialize_teacher_folders(service, st.session_state["user"])
+        exams_folder_id = teacher_folders["exams_folder_id"]
+        essays_folder_id = teacher_folders["essays_folder_id"]
+        graded_essays_folder_id = teacher_folders["graded_essays_folder_id"]
+        reports_folder_id = teacher_folders["reports_folder_id"]
+        
         st.subheader("Tải đề thi và đáp án")
         
         if "upload_completed" not in st.session_state:
             st.session_state["upload_completed"] = False
         
-        existing_exam = find_file_in_folder(service, "de_thi.pdf", exams_folder_id)
-        existing_answer = find_file_in_folder(service, "dap_an.docx", exams_folder_id)
+        exam_list = get_exam_list(service, exams_folder_id)
         
-        if existing_exam:
-            st.info(f"Đề thi (de_thi.pdf) đã tồn tại trên Google Drive (ID: {existing_exam['id']}).")
-        if existing_answer:
-            st.info(f"Đáp án (dap_an.docx) đã tồn tại trên Google Drive (ID: {existing_answer['id']}).")
+        if exam_list:
+            st.info("Danh sách đề thi hiện có:")
+            for exam in exam_list:
+                st.write(f"- {exam['exam_file']} (Mã số bí mật: {exam['secret_code']})")
         
         col1, col2 = st.columns(2)
         with col1:
-            if existing_exam and st.button("Xóa đề thi hiện có"):
-                service.files().delete(fileId=existing_exam['id']).execute()
-                st.success("Đã xóa đề thi (de_thi.pdf) trên Google Drive.")
-                st.rerun()
-        with col2:
-            if existing_answer and st.button("Xóa đáp án hiện có"):
-                service.files().delete(fileId=existing_answer['id']).execute()
-                st.success("Đã xóa đáp án (dap_an.docx) trên Google Drive.")
+            if exam_list and st.button("Xóa tất cả đề thi"):
+                for exam in exam_list:
+                    service.files().delete(fileId=exam['exam_id']).execute()
+                    service.files().delete(fileId=exam['answer_id']).execute()
+                exam_secrets_file = find_file_in_folder(service, "exam_secrets.json", exams_folder_id)
+                if exam_secrets_file:
+                    service.files().delete(fileId=exam_secrets_file['id']).execute()
+                st.success("Đã xóa tất cả đề thi và đáp án.")
                 st.rerun()
         
         if not st.session_state["upload_completed"]:
             uploaded_exam_pdf = st.file_uploader("Tải lên đề thi (PDF)", type=["pdf"], key="exam_pdf")
             uploaded_answer = st.file_uploader("Tải lên đáp án mẫu", type=["docx"], key="answer")
+            secret_code = st.text_input("Nhập mã số bí mật cho đề thi:", type="password")
             
-            if uploaded_exam_pdf and uploaded_answer:
+            if uploaded_exam_pdf and uploaded_answer and secret_code:
                 exam_pdf_content = uploaded_exam_pdf.read()
                 answer_content = uploaded_answer.read()
                 
-                upload_file_to_drive(service, exam_pdf_content, "de_thi.pdf", exams_folder_id, update_if_exists=True)
-                upload_file_to_drive(service, answer_content, "dap_an.docx", exams_folder_id, update_if_exists=True)
+                exam_count = len(exam_list) + 1
+                exam_filename = f"de_thi_{exam_count}.pdf"
+                answer_filename = f"dap_an_{exam_count}.docx"
                 
-                st.success("Đề thi (PDF) và đáp án đã được lưu trên Google Drive.")
+                exam_file_id = upload_file_to_drive(service, exam_pdf_content, exam_filename, exams_folder_id, update_if_exists=True)
+                answer_file_id = upload_file_to_drive(service, answer_content, answer_filename, exams_folder_id, update_if_exists=True)
+                
+                exam_list.append({
+                    "exam_file": exam_filename,
+                    "exam_id": exam_file_id,
+                    "answer_file": answer_filename,
+                    "answer_id": answer_file_id,
+                    "secret_code": secret_code
+                })
+                update_exam_list(service, exams_folder_id, exam_list)
+                
+                st.success(f"Đề thi {exam_filename} và đáp án đã được lưu trên Google Drive.")
                 st.session_state["upload_completed"] = True
                 st.rerun()
         else:
             st.success("Đề thi và đáp án đã được tải lên thành công!")
-            if st.button("Tải lên lại"):
+            if st.button("Tải lên đề thi mới"):
                 st.session_state["upload_completed"] = False
                 st.rerun()
 
@@ -396,8 +492,13 @@ else:
             uploaded_essay = st.file_uploader("Tải lên bài làm tự luận của sinh viên", type=["docx"], key="single_essay")
             
             if uploaded_essay:
-                answer_file = find_file_in_folder(service, "dap_an.docx", exams_folder_id)
-                if answer_file:
+                exam_list = get_exam_list(service, exams_folder_id)
+                if exam_list:
+                    selected_exam = st.selectbox("Chọn đáp án mẫu:", [exam["answer_file"] for exam in exam_list])
+                    answer_file = next(exam for exam in exam_list if exam["answer_file"] == selected_exam)
+                    answer_content = download_file_from_drive(service, answer_file['answer_id'])
+                    answer_text = read_docx(answer_content)
+                    
                     filename = uploaded_essay.name
                     try:
                         mssv, student_name = filename.replace(".docx", "").split("_", 1)
@@ -405,8 +506,6 @@ else:
                         st.error("Tên file không đúng định dạng 'MSSV_HọTên.docx'. Vui lòng kiểm tra lại.")
                     else:
                         student_text = read_docx(uploaded_essay.read())
-                        answer_content = download_file_from_drive(service, answer_file['id'])
-                        answer_text = read_docx(answer_content)
                         
                         set_loading_cursor(True)
                         with st.spinner("Đang chấm bài..."):
@@ -455,9 +554,11 @@ else:
                 st.session_state["grading_results"] = []
                 
                 if uploaded_essays:
-                    answer_file = find_file_in_folder(service, "dap_an.docx", exams_folder_id)
-                    if answer_file:
-                        answer_content = download_file_from_drive(service, answer_file['id'])
+                    exam_list = get_exam_list(service, exams_folder_id)
+                    if exam_list:
+                        selected_exam = st.selectbox("Chọn đáp án mẫu:", [exam["answer_file"] for exam in exam_list])
+                        answer_file = next(exam for exam in exam_list if exam["answer_file"] == selected_exam)
+                        answer_content = download_file_from_drive(service, answer_file['answer_id'])
                         answer_text = read_docx(answer_content)
                         results = []
                         
@@ -555,81 +656,119 @@ else:
                 st.info("Chưa có báo cáo nào được lưu.")
     
     elif role == "student":
-        exam_file = find_file_in_folder(service, "de_thi.pdf", exams_folder_id)
-        if exam_file:
+        # Lấy danh sách tất cả thư mục giảng viên
+        response = service.files().list(q=f"'{root_folder_id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false", spaces='drive').execute()
+        teacher_folders = response.get('files', [])
+        
+        # Lấy danh sách tất cả đề thi từ các giảng viên
+        all_exams = []
+        for teacher_folder in teacher_folders:
+            username = teacher_folder['name'].replace("teacher_", "")
+            exams_folder = find_file_in_folder(service, "exams", teacher_folder['id'])
+            if exams_folder:
+                exam_list = get_exam_list(service, exams_folder['id'])
+                for exam in exam_list:
+                    all_exams.append({
+                        "display_name": f"{username} - {exam['exam_file']}",
+                        "exam_id": exam['exam_id'],
+                        "secret_code": exam['secret_code']
+                    })
+        
+        if all_exams:
             mssv = st.text_input("MSSV:", value=st.session_state["mssv"], key="mssv_input")
             full_name = st.text_input("Họ và Tên:", value=st.session_state["full_name"], key="full_name_input")
-
             st.session_state["mssv"] = mssv
             st.session_state["full_name"] = full_name
-
+            
             if st.session_state["mssv"] and st.session_state["full_name"]:
-                tab1, tab2 = st.tabs([" W bài thi online", "Nộp bài"])
+                # Hiển thị danh sách đề thi
+                selected_exam = st.selectbox("Chọn đề thi:", [exam["display_name"] for exam in all_exams])
+                secret_code = st.text_input("Nhập mã số bí mật:", type="password")
                 
-                with tab1:
-                    if not st.session_state["start_exam"]:
-                        if st.button("Làm bài"):
-                            st.session_state["start_exam"] = True
-                            st.session_state["current_num_questions"] = 1
-                            st.rerun()
+                if st.button("Xem đề thi"):
+                    selected_exam_data = next(exam for exam in all_exams if exam["display_name"] == selected_exam)
+                    if secret_code == selected_exam_data["secret_code"]:
+                        st.session_state["selected_exam_id"] = selected_exam_data["exam_id"]
+                        st.session_state["exam_access_granted"] = True
+                        st.rerun()
                     else:
-                        st.subheader("Đề thi:")
-                        file_id = exam_file['id']
-                        viewer_url = f"https://drive.google.com/viewerng/viewer?embedded=true&url=https://drive.google.com/uc?id={file_id}"
-                        pdf_display = f'<iframe src="{viewer_url}" width="100%" height="600px" frameborder="0"></iframe>'
-                        st.markdown(pdf_display, unsafe_allow_html=True)
-                        st.info("Nếu đề thi không hiển thị, vui lòng sử dụng nút 'Tải đề thi (PDF) nếu không xem được' để tải file về và xem.")
-                        
-                        set_loading_cursor(True)
-                        with st.spinner("Đang tải đề thi..."):
-                            exam_content = download_file_from_drive(service, exam_file['id'])
-                        set_loading_cursor(False)
-                        
-                        st.download_button(
-                            label="Tải đề thi (PDF) nếu không xem được",
-                            data=exam_content,
-                            file_name="de_thi.pdf",
-                            mime="application/pdf"
-                        )
-                        
-                        answers = []
-                        for i in range(st.session_state["current_num_questions"]):
-                            st.write(f"**Câu {i+1}**")
-                            answer = st_quill(f"Câu {i+1}:", key=f"answer_{i}")
-                            answers.append(answer)
-                        
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            if st.button("Thêm câu hỏi"):
-                                st.session_state["current_num_questions"] += 1
-                                st.rerun()
-                        with col2:
-                            if st.session_state["current_num_questions"] > 1:
-                                if st.button("Loại câu hỏi"):
-                                    st.session_state["current_num_questions"] -= 1
-                                    st.rerun()
-                        
-                        if st.button("Nộp bài"):
-                            student_text = "\n".join([f"Câu {i+1}:\n{answer}" for i, answer in enumerate(answers) if answer])
-                            filename = f"{st.session_state['mssv']}_{st.session_state['full_name']}.docx"
-                            doc = docx.Document()
-                            doc.add_paragraph(student_text)
-                            doc_buffer = io.BytesIO()
-                            doc.save(doc_buffer)
-                            doc_buffer.seek(0)
-                            
-                            upload_file_to_drive(service, doc_buffer.getvalue(), filename, essays_folder_id)
-                            st.success(f"Bài làm đã được lưu trên Google Drive với tên: {filename}")
-                            st.session_state["start_exam"] = False
-                            st.session_state["current_num_questions"] = 1
-                            st.rerun()
+                        st.error("Mã số bí mật không đúng. Vui lòng thử lại.")
                 
-                with tab2:
-                    uploaded_essay = st.file_uploader("Tải lên bài làm tự luận", type=["docx"])
-                    if uploaded_essay:
-                        filename = f"{st.session_state['mssv']}_{st.session_state['full_name']}.docx"
-                        essay_content = uploaded_essay.read()
-                        upload_file_to_drive(service, essay_content, filename, essays_folder_id)
-                        st.success(f"Bài làm đã được lưu trên Google Drive với tên: {filename}")
+                if st.session_state.get("exam_access_granted", False):
+                    tab1, tab2 = st.tabs(["Làm bài thi online", "Nộp bài"])
+                    
+                    with tab1:
+                        if not st.session_state["start_exam"]:
+                            if st.button("Làm bài"):
+                                st.session_state["start_exam"] = True
+                                st.session_state["current_num_questions"] = 1
+                                st.rerun()
+                        else:
+                            st.subheader("Đề thi:")
+                            file_id = st.session_state["selected_exam_id"]
+                            viewer_url = f"https://drive.google.com/viewerng/viewer?embedded=true&url=https://drive.google.com/uc?id={file_id}"
+                            pdf_display = f'<iframe src="{viewer_url}" width="100%" height="600px" frameborder="0"></iframe>'
+                            st.markdown(pdf_display, unsafe_allow_html=True)
+                            st.info("Nếu đề thi không hiển thị, vui lòng sử dụng nút 'Tải đề thi (PDF) nếu không xem được' để tải file về và xem.")
+                            
+                            set_loading_cursor(True)
+                            with st.spinner("Đang tải đề thi..."):
+                                exam_content = download_file_from_drive(service, file_id)
+                            set_loading_cursor(False)
+                            
+                            st.download_button(
+                                label="Tải đề thi (PDF) nếu không xem được",
+                                data=exam_content,
+                                file_name="de_thi.pdf",
+                                mime="application/pdf"
+                            )
+                            
+                            answers = []
+                            for i in range(st.session_state["current_num_questions"]):
+                                st.write(f"**Câu {i+1}**")
+                                answer = st_quill(f"Câu {i+1}:", key=f"answer_{i}")
+                                answers.append(answer)
+                            
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                if st.button("Thêm câu hỏi"):
+                                    st.session_state["current_num_questions"] += 1
+                                    st.rerun()
+                            with col2:
+                                if st.session_state["current_num_questions"] > 1:
+                                    if st.button("Loại câu hỏi"):
+                                        st.session_state["current_num_questions"] -= 1
+                                        st.rerun()
+                            
+                            if st.button("Nộp bài"):
+                                student_text = "\n".join([f"Câu {i+1}:\n{answer}" for i, answer in enumerate(answers) if answer])
+                                filename = f"{st.session_state['mssv']}_{st.session_state['full_name']}.docx"
+                                doc = docx.Document()
+                                doc.add_paragraph(student_text)
+                                doc_buffer = io.BytesIO()
+                                doc.save(doc_buffer)
+                                doc_buffer.seek(0)
+                                
+                                # Lưu bài làm vào thư mục essays của giảng viên tương ứng
+                                teacher_username = selected_exam.split(" - ")[0]
+                                teacher_folder = get_or_create_folder(service, f"teacher_{teacher_username}", root_folder_id)
+                                essays_folder = get_or_create_folder(service, "essays", teacher_folder)
+                                upload_file_to_drive(service, doc_buffer.getvalue(), filename, essays_folder)
+                                st.success(f"Bài làm đã được lưu trên Google Drive với tên: {filename}")
+                                st.session_state["start_exam"] = False
+                                st.session_state["current_num_questions"] = 1
+                                st.session_state["exam_access_granted"] = False
+                                st.rerun()
+                    
+                    with tab2:
+                        uploaded_essay = st.file_uploader("Tải lên bài làm tự luận", type=["docx"])
+                        if uploaded_essay:
+                            filename = f"{st.session_state['mssv']}_{st.session_state['full_name']}.docx"
+                            essay_content = uploaded_essay.read()
+                            teacher_username = selected_exam.split(" - ")[0]
+                            teacher_folder = get_or_create_folder(service, f"teacher_{teacher_username}", root_folder_id)
+                            essays_folder = get_or_create_folder(service, "essays", teacher_folder)
+                            upload_file_to_drive(service, essay_content, filename, essays_folder)
+                            st.success(f"Bài làm đã được lưu trên Google Drive với tên: {filename}")
         else:
-            st.error("Không tìm thấy đề thi trên Google Drive. Vui lòng liên hệ giáo viên để tải đề thi (PDF).")
+            st.error("Không tìm thấy đề thi nào. Vui lòng liên hệ giáo viên.")
