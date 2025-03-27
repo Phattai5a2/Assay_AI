@@ -653,13 +653,13 @@ else:
             subject_code = st.text_input("Mã học phần (ví dụ: 012407662501):", key="subject_code")
             term = st.text_input("Tên lớn (ví dụ: 25DHT1A):", key="term")
             subject_name = st.text_input("Tên môn học (ví dụ: Nhập môn KHDL):", key="subject_name")
-            secret_code = st.text_input("Nhập mã số bí mật cho đề thi:", type="password", key="secret_code")
+            secret_code = st.text_input("Nhập mật khẩu cho đề thi:", type="password", key="secret_code")
 
             if st.button("Tải lên đề thi"):
                 if not uploaded_exam_pdf or not uploaded_answer:
                     st.error("Vui lòng tải lên cả file đề thi (PDF) và đáp án mẫu (DOCX).")
                 elif not subject_code or not term or not subject_name or not secret_code:
-                    st.error("Vui lòng nhập đầy đủ Mã học phần, Tên lớn, Tên môn học và Mã số bí mật.")
+                    st.error("Vui lòng nhập đầy đủ Mã học phần, Tên lớn, Tên môn học và Mật khẩu đề thi.")
                 else:
                     exam_pdf_content = uploaded_exam_pdf.read()
                     answer_content = uploaded_answer.read()
