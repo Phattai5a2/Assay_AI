@@ -653,7 +653,7 @@ else:
             subject_code = st.text_input("Mã học phần (ví dụ: 012407662501):", key="subject_code")
             term = st.text_input("Tên lớn (ví dụ: 25DHT1A):", key="term")
             subject_name = st.text_input("Tên môn học (ví dụ: Nhập môn KHDL):", key="subject_name")
-            secret_code = st.text_input("Nhập mật khẩu cho đề thi:", type="password", key="secret_code")
+            secret_code = st.text_input("Tạo mật khẩu cho đề thi:", type="password", key="secret_code")
 
             if st.button("Tải lên đề thi"):
                 if not uploaded_exam_pdf or not uploaded_answer:
