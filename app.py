@@ -1,3 +1,5 @@
+
+
 import streamlit as st
 import requests
 import docx
@@ -631,7 +633,7 @@ else:
                     subject_code = exam.get("subject_code", "N/A")
                     term = exam.get("term", "N/A")
                     subject_name = exam.get("subject_name", "N/A")
-                    st.write(f"- {subject_code} - {term} - {subject_name} - {exam['exam_file']} (Mã số bí mật: {exam['secret_code']})")
+                    st.write(f"- {subject_code} - {term} - {subject_name} - {exam['exam_file']} (Mật khẩu đề thi: {exam['secret_code']})")
 
             # Nút xóa tất cả đề thi
             col1, col2 = st.columns(2)
@@ -653,13 +655,13 @@ else:
             subject_code = st.text_input("Mã học phần (ví dụ: 012407662501):", key="subject_code")
             term = st.text_input("Tên lớn (ví dụ: 25DHT1A):", key="term")
             subject_name = st.text_input("Tên môn học (ví dụ: Nhập môn KHDL):", key="subject_name")
-            secret_code = st.text_input("Nhập mã số bí mật cho đề thi:", type="password", key="secret_code")
+            secret_code = st.text_input("Tạo mật khẩu cho đề thi:", type="password", key="secret_code")
 
             if st.button("Tải lên đề thi"):
                 if not uploaded_exam_pdf or not uploaded_answer:
                     st.error("Vui lòng tải lên cả file đề thi (PDF) và đáp án mẫu (DOCX).")
                 elif not subject_code or not term or not subject_name or not secret_code:
-                    st.error("Vui lòng nhập đầy đủ Mã học phần, Tên lớn, Tên môn học và Mã số bí mật.")
+                    st.error("Vui lòng nhập đầy đủ Mã học phần, Tên lớn, Tên môn học và Mật khẩu đề thi.")
                 else:
                     exam_pdf_content = uploaded_exam_pdf.read()
                     answer_content = uploaded_answer.read()
@@ -686,7 +688,7 @@ else:
                     st.success(f"Đề thi {exam_filename} và đáp án đã được lưu trên Google Drive.")
                     st.rerun()
 
-        # Tab 2: Chấm bài thi tự luận (đã chỉnh sửa)
+        # Tab 2: Chấm bài thi tự luận
         with tab2:
             st.subheader("Chấm bài thi tự luận bằng AI")
 
@@ -705,227 +707,175 @@ else:
                 answer_content = download_file_from_drive(service, selected_exam['answer_id'])
                 answer_text = read_docx(answer_content)
 
-                # Lấy danh sách bài làm từ thư mục essays
-                response = service.files().list(q=f"'{essays_folder_id}' in parents and trashed=false", spaces='drive').execute()
-                file_list = response.get('files', [])
-                
-                essay_data = []
-                if file_list:
-                    for file in file_list:
-                        if file['name'].endswith(".docx"):
-                            try:
-                                mssv, student_name = file['name'].replace(".docx", "").split("_", 1)
-                                essay_data.append({
-                                    "MSSV": mssv,
-                                    "Họ và Tên": student_name,
-                                    "Tên file": file['name'],
-                                    "File ID": file['id']
-                                })
-                            except ValueError:
-                                st.warning(f"Tên file {file['name']} không đúng định dạng 'MSSV_HọTên.docx'. Bỏ qua.")
-
                 # Tạo 3 sub-tab trong Tab 2: Chấm bài đơn, Chấm bài hàng loạt và Xem báo cáo
                 sub_tab1, sub_tab2, sub_tab3 = st.tabs(["Chấm bài đơn", "Chấm bài hàng loạt", "Xem báo cáo"])
 
                 # Sub-tab 1: Chấm bài đơn
                 with sub_tab1:
-                    if essay_data:
-                        st.subheader("Chọn bài làm từ danh sách")
-                        selected_essay = st.selectbox("Chọn bài làm để chấm:", [f"{data['MSSV']} - {data['Họ và Tên']}" for data in essay_data], key="select_single_essay")
-                        selected_essay_data = next(data for data in essay_data if f"{data['MSSV']} - {data['Họ và Tên']}" == selected_essay)
+                    uploaded_essay = st.file_uploader("Tải lên bài làm tự luận của sinh viên", type=["docx"], key="single_essay")
 
-                        # Nút tải bài làm về máy
-                        if st.button("Tải bài làm này"):
+                    if uploaded_essay:
+                        filename = uploaded_essay.name
+                        try:
+                            mssv, student_name = filename.replace(".docx", "").split("_", 1)
+                        except ValueError:
+                            st.error("Tên file không đúng định dạng 'MSSV_HọTên.docx'. Vui lòng kiểm tra lại.")
+                        else:
+                            student_text = read_docx(uploaded_essay.read())
+
                             set_loading_cursor(True)
-                            with st.spinner(f"Đang tải file {selected_essay_data['Tên file']}..."):
-                                file_content = download_file_from_drive(service, selected_essay_data['File ID'])
+                            with st.spinner("Đang chấm bài..."):
+                                result = grade_essay(student_text, answer_text, student_name, mssv)
+
                             set_loading_cursor(False)
-                            if file_content:
+
+                            if result:
+                                st.subheader("Kết quả chấm điểm:")
+                                st.write(f"MSSV: {mssv}")
+                                st.write(f"Họ và Tên: {student_name}")
+                                st.write(result)
+
+                                # Loại bỏ các ký tự ### và #### trước khi lưu vào file Word
+                                cleaned_result = clean_markdown_headers(result)
+
+                                graded_filename = f"{mssv}_{student_name}_graded.docx"
+                                doc = docx.Document()
+                                doc.add_paragraph(f"MSSV: {mssv}")
+                                doc.add_paragraph(f"Họ và Tên: {student_name}")
+                                doc.add_paragraph(cleaned_result)
+                                doc_buffer = io.BytesIO()
+                                doc.save(doc_buffer)
+                                doc_buffer.seek(0)
+
+                                upload_file_to_drive(service, doc_buffer.getvalue(), graded_filename, graded_essays_folder_id)
+
+                                st.success(f"Kết quả đã được lưu trên Google Drive với tên: {graded_filename}")
                                 st.download_button(
-                                    label=f"Tải {selected_essay_data['Tên file']}",
-                                    data=file_content,
-                                    file_name=selected_essay_data['Tên file'],
+                                    label="Tải kết quả chấm điểm",
+                                    data=doc_buffer.getvalue(),
+                                    file_name=graded_filename,
                                     mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                                 )
 
-                        # Nút chấm bài
-                        if st.button("Chấm bài"):
-                            set_loading_cursor(True)
-                            with st.spinner(f"Đang tải bài làm {selected_essay_data['Tên file']}..."):
-                                student_content = download_file_from_drive(service, selected_essay_data['File ID'])
-                            set_loading_cursor(False)
-
-                            if student_content:
-                                student_text = read_docx(student_content)
-                                mssv = selected_essay_data['MSSV']
-                                student_name = selected_essay_data['Họ và Tên']
-
-                                set_loading_cursor(True)
-                                with st.spinner("Đang chấm bài..."):
-                                    result = grade_essay(student_text, answer_text, student_name, mssv)
-                                set_loading_cursor(False)
-
-                                if result:
-                                    st.subheader("Kết quả chấm điểm:")
-                                    st.write(f"MSSV: {mssv}")
-                                    st.write(f"Họ và Tên: {student_name}")
-                                    st.write(result)
-
-                                    # Loại bỏ các ký tự ### và #### trước khi lưu vào file Word
-                                    cleaned_result = clean_markdown_headers(result)
-
-                                    graded_filename = f"{mssv}_{student_name}_graded.docx"
-                                    doc = docx.Document()
-                                    doc.add_paragraph(f"MSSV: {mssv}")
-                                    doc.add_paragraph(f"Họ và Tên: {student_name}")
-                                    doc.add_paragraph(cleaned_result)
-                                    doc_buffer = io.BytesIO()
-                                    doc.save(doc_buffer)
-                                    doc_buffer.seek(0)
-
-                                    upload_file_to_drive(service, doc_buffer.getvalue(), graded_filename, graded_essays_folder_id)
-
-                                    st.success(f"Kết quả đã được lưu trên Google Drive với tên: {graded_filename}")
-                                    st.download_button(
-                                        label="Tải kết quả chấm điểm",
-                                        data=doc_buffer.getvalue(),
-                                        file_name=graded_filename,
-                                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                                    )
-                    else:
-                        st.info("Chưa có bài làm nào được nộp.")
-
                 # Sub-tab 2: Chấm bài hàng loạt
                 with sub_tab2:
-                    if essay_data:
-                        st.subheader("Chọn bài làm để chấm hàng loạt")
-                        selected_essays = st.multiselect("Chọn các bài làm để chấm:", [f"{data['MSSV']} - {data['Họ và Tên']}" for data in essay_data], key="select_batch_essays")
+                    # Khởi tạo biến trạng thái cho việc chấm bài
+                    if "start_grading" not in st.session_state:
+                        st.session_state["start_grading"] = False
 
-                        # Nút tải tất cả bài làm đã chọn
-                        if selected_essays:
-                            if st.button("Tải các bài làm đã chọn (ZIP)"):
-                                set_loading_cursor(True)
-                                with st.spinner("Đang tạo file ZIP..."):
-                                    zip_buffer = io.BytesIO()
-                                    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-                                        for essay in selected_essays:
-                                            essay_data_selected = next(data for data in essay_data if f"{data['MSSV']} - {data['Họ và Tên']}" == essay)
-                                            file_content = download_file_from_drive(service, essay_data_selected['File ID'])
-                                            if file_content:
-                                                zip_file.writestr(essay_data_selected['Tên file'], file_content)
-                                    zip_buffer.seek(0)
-                                set_loading_cursor(False)
-                                st.download_button(
-                                    label="Tải các bài làm đã chọn (ZIP)",
-                                    data=zip_buffer,
-                                    file_name="selected_student_essays.zip",
-                                    mime="application/zip"
-                                )
+                    uploaded_essays = st.file_uploader("Tải lên nhiều bài làm tự luận", type=["docx"], accept_multiple_files=True, key="batch_essays")
 
-                        # Khởi tạo biến trạng thái cho việc chấm bài
-                        if "start_grading" not in st.session_state:
-                            st.session_state["start_grading"] = False
+                    MAX_FILES = 10
+                    if uploaded_essays and len(uploaded_essays) > MAX_FILES:
+                        st.error(f"Vui lòng chỉ tải lên tối đa {MAX_FILES} file để chấm hàng loạt.")
+                        uploaded_essays = uploaded_essays[:MAX_FILES]
 
-                        if selected_essays:
-                            # Nút "Chấm bài" để bắt đầu quá trình chấm
-                            if st.button("Chấm bài"):
-                                st.session_state["start_grading"] = True
-                                st.session_state["grading_results"] = []  # Reset kết quả trước khi chấm
+                    current_files = [file.name for file in uploaded_essays] if uploaded_essays else []
+                    if current_files != st.session_state["uploaded_files"]:
+                        st.session_state["uploaded_files"] = current_files
+                        st.session_state["grading_results"] = []
+                        st.session_state["start_grading"] = False  # Reset trạng thái chấm bài khi danh sách file thay đổi
 
-                                # Xóa tất cả file cũ trong thư mục graded_essays trước khi chấm
-                                set_loading_cursor(True)
-                                with st.spinner("Đang xóa các file kết quả cũ..."):
-                                    clear_folder(service, graded_essays_folder_id)
-                                set_loading_cursor(False)
+                    if uploaded_essays:
+                        # Nút "Chấm bài" để bắt đầu quá trình chấm
+                        if st.button("Chấm bài"):
+                            st.session_state["start_grading"] = True
+                            st.session_state["grading_results"] = []  # Reset kết quả trước khi chấm
 
-                                results = []
+                            # Xóa tất cả file cũ trong thư mục graded_essays trước khi chấm
+                            set_loading_cursor(True)
+                            with st.spinner("Đang xóa các file kết quả cũ..."):
+                                clear_folder(service, graded_essays_folder_id)
+                            set_loading_cursor(False)
 
-                                set_loading_cursor(True)
-                                with st.spinner("Đang chấm bài hàng loạt..."):
-                                    for idx, essay in enumerate(selected_essays, 1):
-                                        essay_data_selected = next(data for data in essay_data if f"{data['MSSV']} - {data['Họ và Tên']}" == essay)
-                                        file_content = download_file_from_drive(service, essay_data_selected['File ID'])
+                            results = []
+
+                            set_loading_cursor(True)
+                            with st.spinner("Đang chấm bài hàng loạt..."):
+                                for idx, essay_file in enumerate(uploaded_essays, 1):
+                                    filename = essay_file.name
+                                    try:
+                                        mssv, student_name = filename.replace(".docx", "").split("_", 1)
+                                    except ValueError:
+                                        st.warning(f"Tên file {filename} không đúng định dạng 'MSSV_HọTên.docx'. Bỏ qua.")
+                                        continue
+
+                                    student_text = read_docx(essay_file.read())
+                                    grading_result = grade_essay(student_text, answer_text, student_name, mssv)
+
+                                    if grading_result:
+                                        total_score = extract_score(grading_result)
+                                        results.append({
+                                            "STT": idx,
+                                            "MSSV": mssv,
+                                            "Họ và Tên": student_name,
+                                            "Tổng điểm tự luận": total_score
+                                        })
+
+                                        # Loại bỏ các ký tự ### và #### trước khi lưu vào file Word
+                                        cleaned_result = clean_markdown_headers(grading_result)
+
+                                        graded_filename = f"{mssv}_{student_name}_graded.docx"
+                                        doc = docx.Document()
+                                        doc.add_paragraph(f"MSSV: {mssv}")
+                                        doc.add_paragraph(f"Họ và Tên: {student_name}")
+                                        doc.add_paragraph(cleaned_result)
+                                        doc_buffer = io.BytesIO()
+                                        doc.save(doc_buffer)
+                                        doc_buffer.seek(0)
+
+                                        upload_file_to_drive(service, doc_buffer.getvalue(), graded_filename, graded_essays_folder_id)
+
+                            set_loading_cursor(False)
+                            st.session_state["grading_results"] = results
+
+                    if st.session_state["grading_results"]:
+                        df = pd.DataFrame(st.session_state["grading_results"])
+                        st.subheader("Kết quả chấm điểm hàng loạt:")
+                        st.dataframe(df)
+
+                        csv_buffer = io.StringIO()
+                        df.to_csv(csv_buffer, index=False, encoding='utf-8-sig')
+                        csv = csv_buffer.getvalue().encode('utf-8')
+                        st.download_button(
+                            label="Tải báo cáo CSV",
+                            data=csv,
+                            file_name="batch_grading_report.csv",
+                            mime="text/csv"
+                        )
+                        st.success("Đã chấm xong tất cả bài và lưu kết quả trên Google Drive.")
+
+                        st.subheader("Tải kết quả chi tiết cho sinh viên:")
+                        response = service.files().list(q=f"'{graded_essays_folder_id}' in parents and trashed=false", spaces='drive').execute()
+                        file_list = response.get('files', [])
+                        if file_list:
+                            # Tạo file ZIP chứa tất cả các file kết quả
+                            zip_buffer = io.BytesIO()
+                            with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                                for file in file_list:
+                                    # Chỉ thêm các file có tên đúng định dạng {mssv}_{student_name}_graded.docx
+                                    if file['name'].endswith("_graded.docx") and "_graded_graded" not in file['name']:
+                                        set_loading_cursor(True)
+                                        with st.spinner(f"Đang xử lý file {file['name']}..."):
+                                            file_content = download_file_from_drive(service, file['id'])
+                                        set_loading_cursor(False)
                                         if file_content:
-                                            student_text = read_docx(file_content)
-                                            mssv = essay_data_selected['MSSV']
-                                            student_name = essay_data_selected['Họ và Tên']
+                                            zip_file.writestr(file['name'], file_content)
 
-                                            grading_result = grade_essay(student_text, answer_text, student_name, mssv)
-
-                                            if grading_result:
-                                                total_score = extract_score(grading_result)
-                                                results.append({
-                                                    "STT": idx,
-                                                    "MSSV": mssv,
-                                                    "Họ và Tên": student_name,
-                                                    "Tổng điểm tự luận": total_score
-                                                })
-
-                                                # Loại bỏ các ký tự ### và #### trước khi lưu vào file Word
-                                                cleaned_result = clean_markdown_headers(grading_result)
-
-                                                graded_filename = f"{mssv}_{student_name}_graded.docx"
-                                                doc = docx.Document()
-                                                doc.add_paragraph(f"MSSV: {mssv}")
-                                                doc.add_paragraph(f"Họ và Tên: {student_name}")
-                                                doc.add_paragraph(cleaned_result)
-                                                doc_buffer = io.BytesIO()
-                                                doc.save(doc_buffer)
-                                                doc_buffer.seek(0)
-
-                                                upload_file_to_drive(service, doc_buffer.getvalue(), graded_filename, graded_essays_folder_id)
-
-                                set_loading_cursor(False)
-                                st.session_state["grading_results"] = results
-
-                        if st.session_state["grading_results"]:
-                            df = pd.DataFrame(st.session_state["grading_results"])
-                            st.subheader("Kết quả chấm điểm hàng loạt:")
-                            st.dataframe(df)
-
-                            csv_buffer = io.StringIO()
-                            df.to_csv(csv_buffer, index=False, encoding='utf-8-sig')
-                            csv = csv_buffer.getvalue().encode('utf-8')
+                            zip_buffer.seek(0)
                             st.download_button(
-                                label="Tải báo cáo CSV",
-                                data=csv,
-                                file_name="batch_grading_report.csv",
-                                mime="text/csv"
+                                label="Tải tất cả kết quả (ZIP)",
+                                data=zip_buffer,
+                                file_name="all_graded_essays.zip",
+                                mime="application/zip",
+                                key="download_all_graded"
                             )
-                            st.success("Đã chấm xong tất cả bài và lưu kết quả trên Google Drive.")
-
-                            st.subheader("Tải kết quả chi tiết cho sinh viên:")
-                            response = service.files().list(q=f"'{graded_essays_folder_id}' in parents and trashed=false", spaces='drive').execute()
-                            file_list = response.get('files', [])
-                            if file_list:
-                                # Tạo file ZIP chứa tất cả các file kết quả
-                                zip_buffer = io.BytesIO()
-                                with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-                                    for file in file_list:
-                                        if file['name'].endswith("_graded.docx") and "_graded_graded" not in file['name']:
-                                            set_loading_cursor(True)
-                                            with st.spinner(f"Đang xử lý file {file['name']}..."):
-                                                file_content = download_file_from_drive(service, file['id'])
-                                            set_loading_cursor(False)
-                                            if file_content:
-                                                zip_file.writestr(file['name'], file_content)
-
-                                zip_buffer.seek(0)
-                                st.download_button(
-                                    label="Tải tất cả kết quả (ZIP)",
-                                    data=zip_buffer,
-                                    file_name="all_graded_essays.zip",
-                                    mime="application/zip",
-                                    key="download_all_graded"
-                                )
-                            else:
-                                st.info("Chưa có kết quả chấm điểm nào được lưu.")
-                        elif selected_essays and not st.session_state["start_grading"]:
-                            st.info("Vui lòng nhấn 'Chấm bài' để bắt đầu chấm điểm.")
-                        elif selected_essays:
-                            st.info("Đang xử lý bài làm...")
-                    else:
-                        st.info("Chưa có bài làm nào được nộp.")
+                        else:
+                            st.info("Chưa có kết quả chấm điểm nào được lưu.")
+                    elif uploaded_essays and not st.session_state["start_grading"]:
+                        st.info("Vui lòng nhấn 'Chấm bài' để bắt đầu chấm điểm.")
+                    elif uploaded_essays:
+                        st.info("Đang xử lý bài làm...")
 
                 # Sub-tab 3: Xem báo cáo
                 with sub_tab3:
@@ -977,7 +927,7 @@ else:
             if st.session_state["mssv"] and st.session_state["full_name"]:
                 # Hiển thị danh sách đề thi với định dạng mới
                 selected_exam = st.selectbox("Chọn đề thi:", [exam["display_name"] for exam in all_exams])
-                secret_code = st.text_input("Nhập mã số bí mật:", type="password")
+                secret_code = st.text_input("Nhập mật khẩu đề thi:", type="password")
                 
                 if st.button("Xem đề thi"):
                     selected_exam_data = next(exam for exam in all_exams if exam["display_name"] == selected_exam)
@@ -986,7 +936,7 @@ else:
                         st.session_state["exam_access_granted"] = True
                         st.rerun()
                     else:
-                        st.error("Mật khẩu đề thi không đúng. Vui lòng thử lại.")
+                        st.error("Mã số bí mật không đúng. Vui lòng thử lại.")
                 
                 if st.session_state.get("exam_access_granted", False):
                     tab1, tab2 = st.tabs(["Làm bài thi online", "Nộp bài"])
