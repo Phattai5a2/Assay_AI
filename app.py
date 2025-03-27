@@ -245,15 +245,12 @@ def get_user_info(credentials):
     return user_info
 
 def login_with_google():
-    """Xử lý đăng nhập bằng Google."""
     st.session_state["logged_in"] = False
     st.markdown("<h2 style='text-align: center; font-size: 36px;'>👤Đăng nhập hệ thống</h2>", unsafe_allow_html=True)
 
-    # Tạo URL đăng nhập Google
     auth_url = get_google_auth_url()
     st.markdown(f'<a href="{auth_url}" target="_self"><button>Đăng nhập bằng Google</button></a>', unsafe_allow_html=True)
 
-    # Xử lý callback từ Google
     query_params = st.query_params
     code = query_params.get("code")
     if code:
@@ -264,13 +261,11 @@ def login_with_google():
             email = user_info.get("email")
             name = user_info.get("name", email.split("@")[0])
 
-            # Phân vai trò dựa trên email
             if email.endswith("@ntt.edu.vn"):
                 role = "teacher"
             else:
                 role = "student"
 
-            # Lưu thông tin người dùng vào session
             st.session_state["logged_in"] = True
             st.session_state["user"] = name
             st.session_state["role"] = role
@@ -280,6 +275,7 @@ def login_with_google():
             st.rerun()
         except Exception as e:
             st.error(f"Đăng nhập thất bại: {str(e)}")
+            st.write("Query parameters:", query_params)  # Debug info
 
 def logout():
     """Xử lý đăng xuất người dùng."""
