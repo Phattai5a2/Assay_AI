@@ -631,7 +631,7 @@ else:
                     subject_code = exam.get("subject_code", "N/A")
                     term = exam.get("term", "N/A")
                     subject_name = exam.get("subject_name", "N/A")
-                    st.write(f"- {subject_code} - {term} - {subject_name} - {exam['exam_file']} (Mã số bí mật: {exam['secret_code']})")
+                    st.write(f"- {subject_code} - {term} - {subject_name} - {exam['exam_file']} (Mã mật khẩu đề thi: {exam['secret_code']})")
 
             # Nút xóa tất cả đề thi
             col1, col2 = st.columns(2)
@@ -925,7 +925,7 @@ else:
             if st.session_state["mssv"] and st.session_state["full_name"]:
                 # Hiển thị danh sách đề thi với định dạng mới
                 selected_exam = st.selectbox("Chọn đề thi:", [exam["display_name"] for exam in all_exams])
-                secret_code = st.text_input("Nhập mã số bí mật:", type="password")
+                secret_code = st.text_input("Nhập mật khẩu đề thi:", type="password")
                 
                 if st.button("Xem đề thi"):
                     selected_exam_data = next(exam for exam in all_exams if exam["display_name"] == selected_exam)
