@@ -651,9 +651,9 @@ else:
         st.subheader("Tải lên đề thi mới")
         uploaded_exam_pdf = st.file_uploader("Tải lên đề thi (PDF)", type=["pdf"], key="exam_pdf")
         uploaded_answer = st.file_uploader("Tải lên đáp án mẫu", type=["docx"], key="answer")
-        subject_code = st.text_input("Mã học phần (ví dụ: IT001):", key="subject_code")
-        term = st.text_input("Tên lớn (ví dụ: Kỳ 1 - 2024):", key="term")
-        subject_name = st.text_input("Tên môn học (ví dụ: Lập trình Python):", key="subject_name")
+        subject_code = st.text_input("Mã học phần (ví dụ:012407662501):", key="subject_code")
+        term = st.text_input("Tên lớn (ví dụ:25DHT1A):", key="term")
+        subject_name = st.text_input("Tên môn học (ví dụ: Nhập môn KHDL):", key="subject_name")
         secret_code = st.text_input("Nhập mã số bí mật cho đề thi:", type="password", key="secret_code")
         
         if st.button("Tải lên đề thi"):
