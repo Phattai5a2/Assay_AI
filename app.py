@@ -686,7 +686,7 @@ else:
                     st.success(f"Đề thi {exam_filename} và đáp án đã được lưu trên Google Drive.")
                     st.rerun()
 
-        # Tab 2: Chấm bài thi tự luận (đã chỉnh sửa)
+        # Tab 2: Chấm bài thi tự luận
         with tab2:
             st.subheader("Chấm bài thi tự luận bằng AI")
 
@@ -697,7 +697,7 @@ else:
             else:
                 st.info("Danh sách đề thi hiện có:")
                 display_names = [f"{exam['subject_code']} - {exam['term']} - {exam['subject_name']}" for exam in exam_list]
-                selected_display_name = st.selectbox("Chọn đề thi và đáp án mẫu:", display_names, key="select_exam")
+                selected_display_name = st.selectbox("Chọn đề thi và đáp án mẫu:", display_names, key="select_exam_tab2")
 
                 # Tìm exam tương ứng với display_name đã chọn
                 selected_exam = next(exam for exam in exam_list 
@@ -724,18 +724,18 @@ else:
                             except ValueError:
                                 st.warning(f"Tên file {file['name']} không đúng định dạng 'MSSV_HọTên.docx'. Bỏ qua.")
 
-                # Tạo 3 sub-tab trong Tab 2: Chấm bài đơn, Chấm bài hàng loạt và Xem báo cáo
+                # Tạo 3 sub-tab: Chấm bài đơn, Chấm bài hàng loạt, Xem báo cáo
                 sub_tab1, sub_tab2, sub_tab3 = st.tabs(["Chấm bài đơn", "Chấm bài hàng loạt", "Xem báo cáo"])
 
                 # Sub-tab 1: Chấm bài đơn
                 with sub_tab1:
                     if essay_data:
                         st.subheader("Chọn bài làm từ danh sách")
-                        selected_essay = st.selectbox("Chọn bài làm để chấm:", [f"{data['MSSV']} - {data['Họ và Tên']}" for data in essay_data], key="select_single_essay")
+                        selected_essay = st.selectbox("Chọn bài làm để chấm:", [f"{data['MSSV']} - {data['Họ và Tên']}" for data in essay_data], key="select_single_essay_tab2")
                         selected_essay_data = next(data for data in essay_data if f"{data['MSSV']} - {data['Họ và Tên']}" == selected_essay)
 
                         # Nút tải bài làm về máy
-                        if st.button("Tải bài làm này"):
+                        if st.button("Tải bài làm này", key="download_single_essay_tab2"):
                             set_loading_cursor(True)
                             with st.spinner(f"Đang tải file {selected_essay_data['Tên file']}..."):
                                 file_content = download_file_from_drive(service, selected_essay_data['File ID'])
@@ -745,11 +745,12 @@ else:
                                     label=f"Tải {selected_essay_data['Tên file']}",
                                     data=file_content,
                                     file_name=selected_essay_data['Tên file'],
-                                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                    key="download_single_essay_button_tab2"
                                 )
 
                         # Nút chấm bài
-                        if st.button("Chấm bài"):
+                        if st.button("Chấm bài", key="grade_single_essay_tab2"):
                             set_loading_cursor(True)
                             with st.spinner(f"Đang tải bài làm {selected_essay_data['Tên file']}..."):
                                 student_content = download_file_from_drive(service, selected_essay_data['File ID'])
@@ -790,20 +791,31 @@ else:
                                         label="Tải kết quả chấm điểm",
                                         data=doc_buffer.getvalue(),
                                         file_name=graded_filename,
-                                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                        key="download_graded_single_essay_tab2"
                                     )
                     else:
                         st.info("Chưa có bài làm nào được nộp.")
 
-                # Sub-tab 2: Chấm bài hàng loạt
+                # Sub-tab 2: Chấm bài hàng loạt (đã sửa để đảm bảo chọn được nhiều bài)
                 with sub_tab2:
                     if essay_data:
                         st.subheader("Chọn bài làm để chấm hàng loạt")
-                        selected_essays = st.multiselect("Chọn các bài làm để chấm:", [f"{data['MSSV']} - {data['Họ và Tên']}" for data in essay_data], key="select_batch_essays")
+                        # Thêm thông báo kiểm tra số lượng bài làm
+                        st.info(f"Số lượng bài làm hiện có: {len(essay_data)}")
+                        if len(essay_data) < 2:
+                            st.warning("Hiện tại chỉ có 1 bài làm hoặc không có bài làm nào. Vui lòng kiểm tra thư mục 'essays' trên Google Drive và đảm bảo các file có định dạng 'MSSV_HọTên.docx'.")
+
+                        # Sử dụng st.multiselect để chọn nhiều bài làm
+                        selected_essays = st.multiselect(
+                            "Chọn các bài làm để chấm (có thể chọn nhiều bài):",
+                            [f"{data['MSSV']} - {data['Họ và Tên']}" for data in essay_data],
+                            key="select_batch_essays_tab2"
+                        )
 
                         # Nút tải tất cả bài làm đã chọn
                         if selected_essays:
-                            if st.button("Tải các bài làm đã chọn (ZIP)"):
+                            if st.button("Tải các bài làm đã chọn (ZIP)", key="download_batch_essays_tab2"):
                                 set_loading_cursor(True)
                                 with st.spinner("Đang tạo file ZIP..."):
                                     zip_buffer = io.BytesIO()
@@ -819,7 +831,8 @@ else:
                                     label="Tải các bài làm đã chọn (ZIP)",
                                     data=zip_buffer,
                                     file_name="selected_student_essays.zip",
-                                    mime="application/zip"
+                                    mime="application/zip",
+                                    key="download_batch_essays_zip_tab2"
                                 )
 
                         # Khởi tạo biến trạng thái cho việc chấm bài
@@ -828,7 +841,7 @@ else:
 
                         if selected_essays:
                             # Nút "Chấm bài" để bắt đầu quá trình chấm
-                            if st.button("Chấm bài"):
+                            if st.button("Chấm bài", key="grade_batch_essays_tab2"):
                                 st.session_state["start_grading"] = True
                                 st.session_state["grading_results"] = []  # Reset kết quả trước khi chấm
 
@@ -890,7 +903,8 @@ else:
                                 label="Tải báo cáo CSV",
                                 data=csv,
                                 file_name="batch_grading_report.csv",
-                                mime="text/csv"
+                                mime="text/csv",
+                                key="download_batch_report_csv_tab2"
                             )
                             st.success("Đã chấm xong tất cả bài và lưu kết quả trên Google Drive.")
 
@@ -916,7 +930,7 @@ else:
                                     data=zip_buffer,
                                     file_name="all_graded_essays.zip",
                                     mime="application/zip",
-                                    key="download_all_graded"
+                                    key="download_all_graded_tab2"
                                 )
                             else:
                                 st.info("Chưa có kết quả chấm điểm nào được lưu.")
@@ -940,7 +954,8 @@ else:
                             label="Tải báo cáo tổng hợp CSV",
                             data=csv,
                             file_name="grading_report_total.csv",
-                            mime="text/csv"
+                            mime="text/csv",
+                            key="download_total_report_csv_tab2"
                         )
                     else:
                         st.info("Chưa có báo cáo nào được lưu.")
