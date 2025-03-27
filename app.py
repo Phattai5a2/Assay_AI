@@ -12,7 +12,9 @@ import zipfile
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload, MediaIoBaseDownload
 from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
+import urllib.parse
 
 # Khởi tạo session state
 if "logged_in" not in st.session_state:
@@ -21,6 +23,8 @@ if "user" not in st.session_state:
     st.session_state["user"] = None
 if "role" not in st.session_state:
     st.session_state["role"] = None
+if "google_credentials" not in st.session_state:
+    st.session_state["google_credentials"] = None
 if "uploaded_files" not in st.session_state:
     st.session_state["uploaded_files"] = []
 if "grading_results" not in st.session_state:
@@ -51,6 +55,16 @@ st.markdown(
 # Cấu hình API
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
 API_KEY = st.secrets["openrouter"]["api_key"]
+
+# Cấu hình Google OAuth
+GOOGLE_CLIENT_ID = st.secrets["google_oauth"]["client_id"]
+GOOGLE_CLIENT_SECRET = st.secrets["google_oauth"]["client_secret"]
+GOOGLE_REDIRECT_URI = st.secrets["google_oauth"]["redirect_uri"]
+SCOPES = [
+    "https://www.googleapis.com/auth/userinfo.email",
+    "https://www.googleapis.com/auth/userinfo.profile",
+    "openid"
+]
 
 def set_loading_cursor(status):
     """Thay đổi con trỏ chuột khi đang tải."""
@@ -155,27 +169,6 @@ def find_file_in_folder(service, file_name, folder_id):
     files = response.get('files', [])
     return files[0] if files else None
 
-def load_users(service, root_folder_id):
-    """Tải danh sách người dùng từ Google Drive."""
-    users_file = find_file_in_folder(service, "users.json", root_folder_id)
-    if users_file:
-        content = download_file_from_drive(service, users_file['id'])
-        return json.loads(content.decode('utf-8'))
-    default_users = [
-        {"username": "admin", "password": "admin123", "role": "admin"},
-        {"username": "teacher", "password": "1", "role": "teacher"},
-        {"username": "student", "password": "1", "role": "student"},
-        {"username": "teacher2", "password": "1", "role": "teacher"},
-        {"username": "tai", "password": "1", "role": "teacher"}
-    ]
-    save_users(service, root_folder_id, default_users)
-    return default_users
-
-def save_users(service, root_folder_id, users):
-    """Lưu danh sách người dùng lên Google Drive."""
-    json_content = json.dumps(users, ensure_ascii=False, indent=4)
-    upload_file_to_drive(service, json_content.encode('utf-8'), "users.json", root_folder_id, update_if_exists=True)
-
 def get_exam_list(service, exams_folder_id):
     """Lấy danh sách đề thi từ Google Drive."""
     exam_secrets_file = find_file_in_folder(service, "exam_secrets.json", exams_folder_id)
@@ -208,26 +201,85 @@ def initialize_teacher_folders(service, username):
         "reports_folder_id": reports_folder_id
     }
 
-def login():
-    """Xử lý đăng nhập người dùng."""
+def get_google_auth_url():
+    """Tạo URL để người dùng đăng nhập bằng Google."""
+    flow = InstalledAppFlow.from_client_config(
+        {
+            "web": {
+                "client_id": GOOGLE_CLIENT_ID,
+                "client_secret": GOOGLE_CLIENT_SECRET,
+                "redirect_uris": [GOOGLE_REDIRECT_URI],
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token"
+            }
+        },
+        scopes=SCOPES
+    )
+    flow.redirect_uri = GOOGLE_REDIRECT_URI
+    auth_url, _ = flow.authorization_url(prompt='consent', access_type='offline')
+    return auth_url
+
+def handle_google_callback(code):
+    """Xử lý callback từ Google sau khi người dùng đăng nhập."""
+    flow = InstalledAppFlow.from_client_config(
+        {
+            "web": {
+                "client_id": GOOGLE_CLIENT_ID,
+                "client_secret": GOOGLE_CLIENT_SECRET,
+                "redirect_uris": [GOOGLE_REDIRECT_URI],
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token"
+            }
+        },
+        scopes=SCOPES
+    )
+    flow.redirect_uri = GOOGLE_REDIRECT_URI
+    flow.fetch_token(code=code)
+    credentials = flow.credentials
+    return credentials
+
+def get_user_info(credentials):
+    """Lấy thông tin người dùng từ Google."""
+    oauth2_client = build('oauth2', 'v2', credentials=credentials)
+    user_info = oauth2_client.userinfo().get().execute()
+    return user_info
+
+def login_with_google():
+    """Xử lý đăng nhập bằng Google."""
     st.session_state["logged_in"] = False
     st.markdown("<h2 style='text-align: center; font-size: 36px;'>👤Đăng nhập hệ thống</h2>", unsafe_allow_html=True)
-    user = st.text_input("Tên đăng nhập:")
-    password = st.text_input("Mật khẩu:", type="password")
-    if st.button("Đăng nhập", icon=":material/login:"):
-        if not user or not password:
-            st.error("Vui lòng nhập đầy đủ tên đăng nhập và mật khẩu.")
-            return
-        users = load_users(service, root_folder_id)
-        user_data = next((u for u in users if u["username"] == user and u["password"] == password), None)
-        if user_data:
+
+    # Tạo URL đăng nhập Google
+    auth_url = get_google_auth_url()
+    st.markdown(f'<a href="{auth_url}" target="_self"><button>Đăng nhập bằng Google</button></a>', unsafe_allow_html=True)
+
+    # Xử lý callback từ Google
+    query_params = st.query_params
+    code = query_params.get("code")
+    if code:
+        try:
+            credentials = handle_google_callback(code)
+            st.session_state["google_credentials"] = credentials
+            user_info = get_user_info(credentials)
+            email = user_info.get("email")
+            name = user_info.get("name", email.split("@")[0])
+
+            # Phân vai trò dựa trên email
+            if email.endswith("@ntt.edu.vn"):
+                role = "teacher"
+            else:
+                role = "student"
+
+            # Lưu thông tin người dùng vào session
             st.session_state["logged_in"] = True
-            st.session_state["user"] = user
-            st.session_state["role"] = user_data["role"]
-            st.success(f"Xin chào, {user}!")
+            st.session_state["user"] = name
+            st.session_state["role"] = role
+            st.session_state["email"] = email
+
+            st.success(f"Xin chào, {name} ({role})!")
             st.rerun()
-        else:
-            st.error("Sai tài khoản hoặc mật khẩu! Vui lòng kiểm tra lại.")
+        except Exception as e:
+            st.error(f"Đăng nhập thất bại: {str(e)}")
 
 def logout():
     """Xử lý đăng xuất người dùng."""
@@ -492,7 +544,7 @@ def load_grading_report(service, folder_id):
 
 # Logic chính của ứng dụng
 if not st.session_state["logged_in"]:
-    login()
+    login_with_google()
 else:
     role = st.session_state.get("role", "student")
     if role == "student":
@@ -500,73 +552,12 @@ else:
     else:
         st.markdown("<h1 style='text-align: center; font-size: 40px;'>🎓Hệ thống chấm tự luận bằng AI</h1>", unsafe_allow_html=True)
     
-    st.write(f"Xin chào, {st.session_state['user']}!")
+    st.write(f"Xin chào, {st.session_state['user']} ({st.session_state['role']})!")
     if st.button("Đăng xuất"):
         logout()
     
-    if role == "admin":
-        st.subheader("Quản lý user")
-        users = load_users(service, root_folder_id)
-        if users:
-            st.info("Danh sách user hiện có:")
-            user_data = {
-                "Tên đăng nhập": [user["username"] for user in users],
-                "Vai trò": [user["role"] for user in users]
-            }
-            df = pd.DataFrame(user_data)
-            st.markdown(
-                """
-                <style>
-                .dataframe {
-                    width: 100%;
-                    border-collapse: collapse;
-                    margin: 20px 0;
-                    font-size: 16px;
-                    text-align: left;
-                }
-                .dataframe th {
-                    background-color: #4CAF50;
-                    color: white;
-                    padding: 12px 15px;
-                    text-align: center;
-                    border: 1px solid #ddd;
-                }
-                .dataframe td {
-                    padding: 12px 15px;
-                    border: 1px solid #ddd;
-                }
-                .dataframe tr:nth-child(even) {
-                    background-color: #f2f2f2;
-                }
-                .dataframe tr:hover {
-                    background-color: #ddd;
-                }
-                </style>
-                """,
-                unsafe_allow_html=True
-            )
-            st.dataframe(df, use_container_width=True)
-        st.subheader("Đăng ký user mới")
-        new_username = st.text_input("Tên đăng nhập mới:")
-        new_password = st.text_input("Mật khẩu mới:", type="password")
-        new_role = st.selectbox("Vai trò:", ["admin", "teacher", "student"])
-        if st.button("Đăng ký"):
-            if not new_username or not new_password:
-                st.error("Vui lòng nhập đầy đủ tên đăng nhập và mật khẩu.")
-            elif any(user["username"] == new_username for user in users):
-                st.error("Tên đăng nhập đã tồn tại. Vui lòng chọn tên khác.")
-            else:
-                users.append({
-                    "username": new_username,
-                    "password": new_password,
-                    "role": new_role
-                })
-                save_users(service, root_folder_id, users)
-                st.success(f"Đã đăng ký user {new_username} với vai trò {new_role}.")
-                st.rerun()
-    
-    elif role == "teacher":
-        teacher_folders = initialize_teacher_folders(service, st.session_state["user"])
+    if role == "teacher":
+        teacher_folders = initialize_teacher_folders(service, st.session_state["email"])
         exams_folder_id = teacher_folders["exams_folder_id"]
         essays_folder_id = teacher_folders["essays_folder_id"]
         graded_essays_folder_id = teacher_folders["graded_essays_folder_id"]
