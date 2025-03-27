@@ -631,7 +631,7 @@ else:
                     subject_code = exam.get("subject_code", "N/A")
                     term = exam.get("term", "N/A")
                     subject_name = exam.get("subject_name", "N/A")
-                    st.write(f"- {subject_code} - {term} - {subject_name} - {exam['exam_file']} (Mã mật khẩu đề thi: {exam['secret_code']})")
+                    st.write(f"- {subject_code} - {term} - {subject_name} - {exam['exam_file']} (Mật khẩu đề thi: {exam['secret_code']})")
 
             # Nút xóa tất cả đề thi
             col1, col2 = st.columns(2)
