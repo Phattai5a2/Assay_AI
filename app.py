@@ -986,7 +986,7 @@ else:
                         st.session_state["exam_access_granted"] = True
                         st.rerun()
                     else:
-                        st.error("Mã số bí mật không đúng. Vui lòng thử lại.")
+                        st.error("Mật khẩu đề thi không đúng. Vui lòng thử lại.")
                 
                 if st.session_state.get("exam_access_granted", False):
                     tab1, tab2 = st.tabs(["Làm bài thi online", "Nộp bài"])
