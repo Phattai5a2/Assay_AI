@@ -1,5 +1,3 @@
-# app.py
-
 import streamlit as st
 import requests
 import docx
@@ -12,7 +10,7 @@ import zipfile
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload, MediaIoBaseDownload
 from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
+from google_auth_oauthlib.flow import Flow
 from google.auth.transport.requests import Request
 import urllib.parse
 
@@ -23,8 +21,10 @@ if "user" not in st.session_state:
     st.session_state["user"] = None
 if "role" not in st.session_state:
     st.session_state["role"] = None
-if "google_credentials" not in st.session_state:
-    st.session_state["google_credentials"] = None
+if "email" not in st.session_state:
+    st.session_state["email"] = None
+if "credentials" not in st.session_state:
+    st.session_state["credentials"] = None
 if "uploaded_files" not in st.session_state:
     st.session_state["uploaded_files"] = []
 if "grading_results" not in st.session_state:
@@ -203,7 +203,7 @@ def initialize_teacher_folders(service, username):
 
 def get_google_auth_url():
     """Tạo URL để người dùng đăng nhập bằng Google."""
-    flow = InstalledAppFlow.from_client_config(
+    flow = Flow.from_client_config(
         {
             "web": {
                 "client_id": GOOGLE_CLIENT_ID,
@@ -216,12 +216,21 @@ def get_google_auth_url():
         scopes=SCOPES
     )
     flow.redirect_uri = GOOGLE_REDIRECT_URI
-    auth_url, _ = flow.authorization_url(prompt='consent', access_type='offline')
+    auth_url, state = flow.authorization_url(
+        access_type="offline",
+        prompt="consent",
+        include_granted_scopes="true"
+    )
+    st.session_state["oauth_state"] = state  # Lưu state để kiểm tra sau
+    st.write("Auth URL:", auth_url)  # Debug info
     return auth_url
 
-def handle_google_callback(code):
+def handle_google_callback(code, state):
     """Xử lý callback từ Google sau khi người dùng đăng nhập."""
-    flow = InstalledAppFlow.from_client_config(
+    if state != st.session_state.get("oauth_state"):
+        raise ValueError("State does not match. Possible CSRF attack.")
+    
+    flow = Flow.from_client_config(
         {
             "web": {
                 "client_id": GOOGLE_CLIENT_ID,
@@ -231,7 +240,8 @@ def handle_google_callback(code):
                 "token_uri": "https://oauth2.googleapis.com/token"
             }
         },
-        scopes=SCOPES
+        scopes=SCOPES,
+        state=state
     )
     flow.redirect_uri = GOOGLE_REDIRECT_URI
     flow.fetch_token(code=code)
@@ -240,23 +250,29 @@ def handle_google_callback(code):
 
 def get_user_info(credentials):
     """Lấy thông tin người dùng từ Google."""
-    oauth2_client = build('oauth2', 'v2', credentials=credentials)
-    user_info = oauth2_client.userinfo().get().execute()
-    return user_info
+    user_info_url = "https://www.googleapis.com/oauth2/v2/userinfo"
+    headers = {"Authorization": f"Bearer {credentials.token}"}
+    response = requests.get(user_info_url, headers=headers)
+    return response.json()
 
 def login_with_google():
+    """Xử lý đăng nhập bằng Google."""
     st.session_state["logged_in"] = False
     st.markdown("<h2 style='text-align: center; font-size: 36px;'>👤Đăng nhập hệ thống</h2>", unsafe_allow_html=True)
 
-    auth_url = get_google_auth_url()
-    st.markdown(f'<a href="{auth_url}" target="_self"><button>Đăng nhập bằng Google</button></a>', unsafe_allow_html=True)
-
-    query_params = st.query_params
-    code = query_params.get("code")
-    if code:
+    if "code" not in st.query_params:
+        auth_url = get_google_auth_url()
+        st.markdown(
+            f"""
+            <button onclick="window.location.href='{auth_url}'">Đăng nhập bằng Google</button>
+            """,
+            unsafe_allow_html=True
+        )
+    else:
+        code = st.query_params.get("code")
+        state = st.query_params.get("state")
         try:
-            credentials = handle_google_callback(code)
-            st.session_state["google_credentials"] = credentials
+            credentials = handle_google_callback(code, state)
             user_info = get_user_info(credentials)
             email = user_info.get("email")
             name = user_info.get("name", email.split("@")[0])
@@ -270,12 +286,14 @@ def login_with_google():
             st.session_state["user"] = name
             st.session_state["role"] = role
             st.session_state["email"] = email
+            st.session_state["credentials"] = credentials
 
             st.success(f"Xin chào, {name} ({role})!")
+            st.experimental_set_query_params()  # Xóa query params sau khi xử lý
             st.rerun()
         except Exception as e:
             st.error(f"Đăng nhập thất bại: {str(e)}")
-            st.write("Query parameters:", query_params)  # Debug info
+            st.write("Query parameters:", st.query_params)  # Debug info
 
 def logout():
     """Xử lý đăng xuất người dùng."""
@@ -316,12 +334,10 @@ def extract_key_points_and_keywords(answer_text):
         dict: Một dictionary chứa các ý chính, từ khóa tích cực/tiêu cực và quy tắc ngữ cảnh (nếu có).
               Trả về None nếu có lỗi xảy ra.
     """
-    # Kiểm tra đầu vào
     if not answer_text or not answer_text.strip():
         print("Error: answer_text is empty or invalid")
         return None
 
-    # Tạo prompt bằng cách chia thành các phần nhỏ
     prompt_parts = [
         "Bạn là một trợ lý AI chuyên phân tích đáp án mẫu. Dựa trên đoạn văn bản sau, ",
         "hãy phân tích thành các ý chính (key points) và trích xuất từ khóa để sử dụng trong việc chấm điểm bài tự luận.\n\n",
@@ -356,16 +372,13 @@ def extract_key_points_and_keywords(answer_text):
         "Bắt đầu phân tích:"
     ]
     
-    # Nối các phần của prompt lại
     prompt = "".join(prompt_parts)
 
-    # Cấu hình headers cho API request
     headers = {
         "Authorization": f"Bearer {API_KEY}",
         "Content-Type": "application/json"
     }
     
-    # Cấu hình payload (dữ liệu gửi đi) cho API
     data = {
         "model": "mistralai/mistral-small-3.1-24b-instruct:free",
         "messages": [
@@ -375,7 +388,6 @@ def extract_key_points_and_keywords(answer_text):
         "temperature": 0.3
     }
     
-    # Gửi yêu cầu đến API và xử lý kết quả
     try:
         response = requests.post(API_URL, headers=headers, json=data, timeout=30)
         if response.status_code == 200:
@@ -405,7 +417,6 @@ def grade_essay(student_text, answer_text, student_name=None, mssv=None, key_poi
     Returns:
         str: Kết quả chấm điểm dưới dạng văn bản. Trả về None nếu có lỗi.
     """
-    # Nếu key_points chưa có, phân tích đáp án mẫu để lấy key_points
     if key_points is None:
         set_loading_cursor(True)
         with st.spinner("Đang phân tích đáp án mẫu..."):
@@ -414,7 +425,6 @@ def grade_essay(student_text, answer_text, student_name=None, mssv=None, key_poi
         if not key_points:
             return None
 
-    # Tạo prompt bằng cách chia thành các phần nhỏ
     prompt_parts = [
         "Bạn là một giảng viên chấm bài chuyên nghiệp. Hãy chấm bài tự luận sau đây bằng cách so sánh bài làm của sinh viên với đáp án mẫu.\n\n",
         
@@ -427,7 +437,6 @@ def grade_essay(student_text, answer_text, student_name=None, mssv=None, key_poi
         "Sử dụng các ý chính và từ khóa này để xác định mức độ phù hợp của bài làm với đáp án mẫu.\n\n"
     ]
     
-    # Thêm thông tin về các ý chính và từ khóa vào prompt
     for point, data in key_points.items():
         prompt_parts.append(f"**{point} (trọng số: {data['weight']}):** {data['description']}\n")
         prompt_parts.append("Từ khóa tích cực (positive keywords):\n")
@@ -439,7 +448,6 @@ def grade_essay(student_text, answer_text, student_name=None, mssv=None, key_poi
         if "contextual_rule" in data:
             prompt_parts.append(f"Quy tắc ngữ cảnh: {data['contextual_rule']}\n")
     
-    # Thêm yêu cầu chấm bài và ví dụ định dạng kết quả
     prompt_parts.extend([
         "\n**Yêu cầu chấm bài:**\n",
         "1. Đưa ra nhận xét chi tiết về bài làm của sinh viên:\n",
@@ -467,16 +475,13 @@ def grade_essay(student_text, answer_text, student_name=None, mssv=None, key_poi
         "Bắt đầu chấm bài:"
     ])
     
-    # Nối các phần của prompt lại
     prompt = "".join(prompt_parts)
 
-    # Cấu hình headers cho API request
     headers = {
         "Authorization": f"Bearer {API_KEY}",
         "Content-Type": "application/json"
     }
     
-    # Cấu hình payload (dữ liệu gửi đi) cho API
     data = {
         "model": "mistralai/mistral-small-3.1-24b-instruct:free",
         "messages": [
@@ -486,7 +491,6 @@ def grade_essay(student_text, answer_text, student_name=None, mssv=None, key_poi
         "temperature": 0.3
     }
     
-    # Gửi yêu cầu đến API và xử lý kết quả
     try:
         response = requests.post(API_URL, headers=headers, json=data, timeout=30)
         if response.status_code == 200:
