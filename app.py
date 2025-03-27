@@ -95,6 +95,7 @@ def clean_markdown_headers(text):
     cleaned_lines = []
     for line in lines:
         line = line.replace("### ", "").replace("#### ", "")
+        line = line.replace("** ", "").replace("**", "")
         cleaned_lines.append(line)
     return "\n".join(cleaned_lines)
 
